@@ -1,583 +1,341 @@
 /**
- * EUAA Monitoring Anonymiser — Core Anonymisation Engine
- * ======================================================
- * All processing happens in the browser. Nothing is sent to any server.
+ * EUAA Monitoring Anonymiser — PDF Processor v12
+ * ===============================================
+ * BLACK-BAR REDACTION: renders each PDF page to canvas, draws black
+ * rectangles over detected text, then saves as a new PDF image-based document.
+ * This approach works on ALL PDFs regardless of PDF-lib compatibility.
  *
- * Handles:
- *  - Rule-based NER for legal / asylum case files
- *  - Consistent session-wide substitution mapping
- *  - Multiple detection categories with controllable depth
- *  - Ordinal date formats (03rd July 2017), Refcom numbers, nationality adjectives
- *  - Arabic/MENA names in Latin alphabet (Abu, Al-, Abd, Bin, Bint, El-, Um, etc.)
- *  - African names (Goodluck, Chukwuemeka, Ousmane, Seydou, Kofi, etc.)
- *  - Multi-word names (up to 4 tokens) with lowercase particles
- *  - Accented Latin characters used in name transliterations
+ * REBUILD MODE: extracts text, anonymises, writes new text PDF.
+ *
+ * Both modes also redact any Refcom numbers supplied manually in the UI.
  */
 
-const EuaaAnonymizer = (() => {
+const EuaaPdfProcessor = (() => {
 
-  // ── Country / nationality lists ──────────────────────────────────────────
-  const COUNTRIES = [
-    'Afghanistan','Albania','Algeria','Armenia','Azerbaijan',
-    'Bangladesh','Belarus','Belgium','Bosnia','Bulgaria',
-    'Cameroon','Chad','Colombia','Croatia','Cyprus',
-    'DRC','Egypt','Eritrea','Ethiopia',
-    'France','Gambia','Georgia','Germany','Ghana','Greece',
-    'Guinea','Hungary','India','Iran','Iraq','Israel','Italy',
-    'Jordan','Kosovo','Lebanon','Libya','Mali','Malta',
-    'Morocco','Nepal','Netherlands','Nigeria','Pakistan','Palestine',
-    'Poland','Romania','Russia','Serbia','Sierra Leone','Somalia',
-    'Spain','Sri Lanka','Sudan','Syria','Turkey','Uganda',
-    'Ukraine','Vietnam','Yemen','Zimbabwe'
-  ];
+  // ── PDF header detection ─────────────────────────────────────────────────
+  function findPdfHeaderOffset(bytes) {
+    const limit = Math.min(bytes.length, 4096);
+    for (let i = 0; i < limit - 4; i++) {
+      if (bytes[i]===0x25 && bytes[i+1]===0x50 && bytes[i+2]===0x44 && bytes[i+3]===0x46 && bytes[i+4]===0x2D)
+        return i;
+    }
+    return -1;
+  }
 
-  // Nationality adjectives and demonyms mapped to their country placeholders
-  const NATIONALITY_MAP = {
-    'Afghan':'Afghanistan','Albanian':'Albania','Algerian':'Algeria',
-    'Armenian':'Armenia','Azerbaijani':'Azerbaijan',
-    'Bangladeshi':'Bangladesh','Belarusian':'Belarus','Belgian':'Belgium',
-    'Bosnian':'Bosnia','Bulgarian':'Bulgaria',
-    'Cameroonian':'Cameroon','Chadian':'Chad','Colombian':'Colombia',
-    'Croatian':'Croatia','Cypriot':'Cyprus',
-    'Congolese':'DRC','Egyptian':'Egypt','Eritrean':'Eritrea',
-    'Ethiopian':'Ethiopia','French':'France','Gambian':'Gambia',
-    'Georgian':'Georgia','German':'Germany','Ghanaian':'Ghana',
-    'Greek':'Greece','Guinean':'Guinea','Hungarian':'Hungary',
-    'Indian':'India','Iranian':'Iran','Iraqi':'Iraq',
-    'Israeli':'Israel','Italian':'Italy','Jordanian':'Jordan',
-    'Kosovar':'Kosovo','Lebanese':'Lebanon','Libyan':'Libya',
-    'Malian':'Mali','Maltese':'Malta','Moroccan':'Morocco',
-    'Nepalese':'Nepal','Nepali':'Nepal','Dutch':'Netherlands',
-    'Nigerian':'Nigeria','Pakistani':'Pakistan','Palestinian':'Palestine',
-    'Polish':'Poland','Romanian':'Romania','Russian':'Russia',
-    'Serbian':'Serbia','Sierra Leonean':'Sierra Leone','Somali':'Somalia',
-    'Spanish':'Spain','Sri Lankan':'Sri Lanka','Sudanese':'Sudan',
-    'Syrian':'Syria','Turkish':'Turkey','Ugandan':'Uganda',
-    'Ukrainian':'Ukraine','Vietnamese':'Vietnam','Yemeni':'Yemen',
-    'Zimbabwean':'Zimbabwe'
-  };
-
-  // ── Arabic / MENA name particles (case-insensitive in matching) ─────────────
-  // These connect name tokens: "Mohammed Al-Rashid", "Abd Al Karim", "Bin Laden"
-  const ARABIC_PARTICLES = [
-    'al','el','ul','abu','abd','abdu','abdi','bin','bint','ibn','um','umm',
-    'ould','wuld','mac','mc','van','von','de','di','du','del','della','di',
-    'ben','bat','bar'
-  ];
-
-  // Regex fragment: matches one Arabic/connector particle (with optional hyphen attachment)
-  // e.g. "Al-", "al ", "Abd ", "Bin "
-  const ARABIC_PARTICLE_RE_FRAG =
-    '(?:' + ARABIC_PARTICLES.map(p =>
-      p.charAt(0).toUpperCase() + p.slice(1) + '|' + p
-    ).join('|') + ')';
-
-  // ── African / West-African name patterns ─────────────────────────────────────
-  // Many West/Central African names are single long tokens (Chukwuemeka, Ousmane)
-  // or follow FirstName Surname patterns.  We extend the name character set to
-  // include the full Latin extended block (accented chars) used in French/Arabic
-  // transliterations: é ï ā ū ç ñ ö ü ô â etc.
-  // Unicode property \p{L} would be ideal but has limited browser support without flags.
-  // We use an explicit accented-char class instead.
-  const NAME_CHAR = "[A-Za-zÀ-ÖØ-öø-ÿ'\\-]";   // Latin + Latin Extended + apostrophe + hyphen
-
-  const FAMILY_TERMS = [
-    'wife','husband','spouse','partner','daughter','son','children','child',
-    'mother','father','brother','sister','grandfather','grandmother',
-    'grandchild','nephew','niece','cousin','uncle','aunt','sibling','parents'
-  ];
-
-  const MONTH_NAMES = 'January|February|March|April|May|June|July|August|September|October|November|December';
-  const MONTH_SHORT  = 'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
-  const ORDINAL_SUFF = '(?:st|nd|rd|th)';
-
-  // ── Session state ─────────────────────────────────────────────────────────
-  let _entityMap = new Map();   // key => { category, original, replacement }
-  let _counters  = {};
-  let _prefix    = 'Applicant';
-
-  function resetSession() {
-    _entityMap = new Map();
-    _counters  = {
-      person:0, official:0, country:0, location:0, route:0,
-      facility:0, caseId:0, address:0, email:0, phone:0, generic:0
+  function inspectPdfBytes(bytes) {
+    const offset = findPdfHeaderOffset(bytes);
+    const header = new TextDecoder('latin1').decode(bytes.slice(0, Math.min(512, bytes.length)));
+    return {
+      size: bytes.length, offset,
+      hasPdfHeader:  offset >= 0,
+      looksLikeHtml: /^\s*<!DOCTYPE|^\s*<html/i.test(header),
+      looksLikeZip:  bytes[0] === 0x50 && bytes[1] === 0x4B,
     };
   }
 
-  function setPrefix(p) { _prefix = (p || 'Applicant').trim() || 'Applicant'; }
-
-  // ── Alpha labels A B C … Z AA AB … ────────────────────────────────────────
-  function toAlpha(n) {
-    let r = '';
-    while (n > 0) { r = String.fromCharCode(64 + ((n - 1) % 26 + 1)) + r; n = Math.floor((n - 1) / 26); }
-    return r;
+  function buildPdfValidationError(fileName, info) {
+    if (info.size === 0)
+      return `"${fileName}" is empty (0 bytes). Please upload the original PDF.`;
+    if (info.looksLikeHtml)
+      return `"${fileName}" is an HTML page, not a PDF. Save the actual document with File → Save As → PDF.`;
+    if (info.looksLikeZip)
+      return `"${fileName}" looks like a ZIP/DOCX archive, not a PDF.`;
+    if (!info.hasPdfHeader)
+      return `"${fileName}" has no valid PDF header. The file may be corrupted or partially downloaded.`;
+    return null;
   }
 
-  // ── Date generalisation ───────────────────────────────────────────────────
-  function generaliseDate(raw) {
-    // "3rd July 2017" → "July 2017"
-    const mFull = raw.match(new RegExp(
-      `\\d{1,2}${ORDINAL_SUFF}?\\s+(${MONTH_NAMES})\\s+(\\d{4})`, 'i'
-    ));
-    if (mFull) return `${mFull[1]} ${mFull[2]}`;
+  // ── Load with PDF.js ─────────────────────────────────────────────────────
+  async function loadWithPdfJs(fileName, bytes, onStatus) {
+    const info = inspectPdfBytes(bytes);
+    const err  = buildPdfValidationError(fileName, info);
+    if (err) throw new Error(err);
 
-    // "July 2017"
-    const mMonthYear = raw.match(new RegExp(`(${MONTH_NAMES})\\s+(\\d{4})`, 'i'));
-    if (mMonthYear) return `${mMonthYear[1]} ${mMonthYear[2]}`;
+    let usableBytes = info.offset > 0 ? bytes.slice(info.offset) : bytes;
+    if (info.offset > 0 && onStatus)
+      onStatus(`Trimming ${info.offset} wrapper bytes…`);
 
-    // DD/MM/YYYY or DD-MM-YYYY
-    const mSlash = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-    if (mSlash) {
-      const yr = mSlash[3].length === 2 ? `20${mSlash[3]}` : mSlash[3];
-      return `Year ${yr}`;
+    for (const buf of [usableBytes, usableBytes.slice(0)]) {
+      try {
+        const pdf = await pdfjsLib.getDocument({ data: buf, verbosity: 0, stopAtErrors: false }).promise;
+        return { pdf, usableBytes: buf };
+      } catch (_) {}
     }
-
-    return 'Date Redacted';
+    throw new Error(`"${fileName}" — PDF.js could not parse this file. It may be encrypted or corrupted.`);
   }
 
-  // ── Placeholder generator ─────────────────────────────────────────────────
-  function makePlaceholder(original, category) {
-    const key = `${category}::${original.trim().toLowerCase()}`;
-    if (_entityMap.has(key)) return _entityMap.get(key).replacement;
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function hasMeaningfulText(text) {
+    return (text || '').replace(/\s+/g, ' ').trim().length > 30;
+  }
 
-    let replacement;
-    switch (category) {
-      case 'PERSON':
-        _counters.person++;
-        replacement = `${_prefix} ${toAlpha(_counters.person)}`;
-        break;
-      case 'OFFICIAL_NAME':
-      case 'ORGANISATION':
-        _counters.official++;
-        replacement = `Official ${toAlpha(_counters.official)}`;
-        break;
-      case 'COUNTRY':
-        _counters.country++;
-        replacement = `Country ${toAlpha(_counters.country)}`;
-        break;
-      case 'NATIONALITY': {
-        // Reuse country placeholder for consistency
-        const country = NATIONALITY_MAP[original] || original;
-        const ck = `COUNTRY::${country.toLowerCase()}`;
-        let cpl;
-        if (_entityMap.has(ck)) {
-          cpl = _entityMap.get(ck).replacement;
-        } else {
-          _counters.country++;
-          cpl = `Country ${toAlpha(_counters.country)}`;
-          _entityMap.set(ck, { category: 'COUNTRY', original: country, replacement: cpl });
+  async function pageToCanvas(pdfPage, scale) {
+    scale = scale || 2.0;
+    const vp = pdfPage.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.ceil(vp.width);
+    canvas.height = Math.ceil(vp.height);
+    await pdfPage.render({
+      canvasContext: canvas.getContext('2d', { willReadFrequently: true }),
+      viewport: vp
+    }).promise;
+    return { canvas, viewport: vp, scale };
+  }
+
+  async function runOcr(canvas, label, onStatus) {
+    if (!window.Tesseract) throw new Error('Tesseract.js not loaded yet.');
+    if (onStatus) onStatus(`OCR: ${label}…`);
+    const r = await window.Tesseract.recognize(canvas, 'eng', { logger: () => {} });
+    return r.data;
+  }
+
+  // ── Get manual Refcom numbers from the UI input ──────────────────────────
+  function getManualRefcoms() {
+    const el = document.getElementById('manualRefcoms');
+    if (!el || !el.value.trim()) return [];
+    return el.value
+      .split(/[\n,;]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+  }
+
+  // Build a combined regex that matches any of the manual strings (exact, case-insensitive)
+  function buildManualRegex(refcoms) {
+    if (!refcoms.length) return null;
+    const escaped = refcoms.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return new RegExp(escaped.join('|'), 'gi');
+  }
+
+  // ── Mode 1: Canvas-based black-bar redaction ─────────────────────────────
+  // Renders every page to a high-res canvas, draws black rectangles over
+  // detected text items, then encodes each page as a JPEG inside a new PDF.
+  // Works on ALL PDFs — no PDF-lib editing required.
+  async function applyBlackoutCanvas(pdf, fileName, level, active, useOcr, onStatus) {
+    const { jsPDF } = window.jspdf;
+    const manualRefcoms = getManualRefcoms();
+    const manualRx      = buildManualRegex(manualRefcoms);
+
+    const allReplacements = [];
+    const pageTexts = [];
+    let doc = null; // jsPDF document
+
+    const SCALE = 2.0; // render resolution (2× = 144dpi)
+
+    for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex++) {
+      const pageNum = pageIndex + 1;
+      if (onStatus) onStatus(`Redacting page ${pageNum}/${pdf.numPages} of "${fileName}"…`);
+
+      const pdfJsPage = await pdf.getPage(pageNum);
+      const { canvas, viewport, scale } = await pageToCanvas(pdfJsPage, SCALE);
+      const ctx = canvas.getContext('2d');
+
+      // Get text items with positions
+      const content = await pdfJsPage.getTextContent();
+      const pageText = [];
+
+      for (const item of content.items) {
+        const str = (item.str || '').trim();
+        if (!str) continue;
+        pageText.push(str);
+
+        // Detect entities from NER engine
+        const entities = EuaaAnonymizer.detectEntities(str, level, active);
+
+        // Also check manual Refcom matches
+        let hasManual = false;
+        if (manualRx) {
+          manualRx.lastIndex = 0;
+          hasManual = manualRx.test(str);
+          manualRx.lastIndex = 0;
         }
-        replacement = `${cpl} national`;
-        break;
-      }
-      case 'LOCATION':
-        _counters.location++;
-        replacement = `Location ${toAlpha(_counters.location)}`;
-        break;
-      case 'FACILITY':
-        _counters.facility++;
-        replacement = `Facility ${toAlpha(_counters.facility)}`;
-        break;
-      case 'ROUTE':
-        _counters.route++;
-        replacement = `Route ${_counters.route}`;
-        break;
-      case 'CASE_ID':
-      case 'REFCOM':
-      case 'FILE_NUMBER':
-      case 'PASSPORT_OR_ID':
-        _counters.caseId++;
-        replacement = `Case File ${String(_counters.caseId).padStart(3, '0')}`;
-        break;
-      case 'ADDRESS':
-        _counters.address++;
-        replacement = `Address ${toAlpha(_counters.address)}`;
-        break;
-      case 'EMAIL':
-        _counters.email++;
-        replacement = `email-${String(_counters.email).padStart(3,'0')}@example.invalid`;
-        break;
-      case 'PHONE':
-        _counters.phone++;
-        replacement = `+000-000-${String(_counters.phone).padStart(4,'0')}`;
-        break;
-      case 'FAMILY_TERM':
-        replacement = 'family member';
-        break;
-      case 'DATE_EXACT':
-        replacement = generaliseDate(original);
-        break;
-      default:
-        _counters.generic++;
-        replacement = `[Redacted ${String(_counters.generic).padStart(3,'0')}]`;
-    }
 
-    _entityMap.set(key, { category, original: original.trim(), replacement });
-    return replacement;
-  }
+        if (!entities.length && !hasManual) continue;
 
-  // ── Pattern builder ───────────────────────────────────────────────────────
-  function buildPatterns(active) {
-    const P = [];
-    if (active.has('EMAIL'))
-      P.push(['EMAIL', /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g]);
+        // Convert PDF.js transform → canvas pixel coordinates
+        const t = pdfjsLib.Util.transform(viewport.transform, item.transform);
+        // t[4] = x, t[5] = y (both in viewport/CSS pixels)
+        // Multiply by scale to get canvas pixels
+        const cx = t[4] * scale;
+        const cy = t[5] * scale;
+        const cw = Math.max((item.width  || str.length * 5.5) * scale, 10);
+        const ch = Math.max((item.height || Math.abs(t[3])    || 10)  * scale, 10);
 
-    if (active.has('PHONE'))
-      P.push(['PHONE', /(?:\+|00)\d[\d\s().\-]{6,}\d|\b\d{3,4}[\s.\-]\d{3,4}[\s.\-]\d{3,4}\b/g]);
+        // Draw black rectangle (add small padding)
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(cx - 2, cy - ch - 2, cw + 4, ch + 6);
 
-    // Refcom / IPAT / case reference numbers  e.g. "Refcom no 32939", "IPAT ref N/A"
-    if (active.has('CASE_ID')) {
-      P.push(['REFCOM',   /\bRefcom\s+(?:no\.?|number)?\s*\d{4,8}\b/gi]);
-      P.push(['REFCOM',   /\bIPAT\s+reference\s*:\s*\S+/gi]);
-      P.push(['CASE_ID',  /\b(?:Case|File|Ref|Reference)\s*(?:No\.?|Number|#)?\s*[:\-]?\s*[A-Z0-9]{2,}[\/\-]?\d{2,}\b/gi]);
-      P.push(['CASE_ID',  /\b[A-Z]{1,4}[\/\-]\d{4}[\/\-]\d{2,6}\b/g]);
-    }
-
-    if (active.has('PASSPORT_OR_ID'))
-      P.push(['PASSPORT_OR_ID', /\b(?:Passport|ID|Identity(?:\s+Card)?|Document)\s*(?:No\.?|Number)?\s*[:\-]?\s*[A-Z0-9]{5,20}\b/gi]);
-
-    if (active.has('ADDRESS'))
-      P.push(['ADDRESS',
-        /\b\d{1,4}\s+[A-Z][A-Za-z0-9'.\-]+(?:\s+[A-Z][A-Za-z0-9'.\-]+){0,4}\s+(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Way|Place|Pl\.?|Drive|Dr\.?|Court|Ct\.?)\b/gi
-      ]);
-
-    if (active.has('DATE_EXACT')) {
-      // "3rd July 2017", "03 July 2017", "3 Jul 2017"
-      P.push(['DATE_EXACT', new RegExp(
-        `\\b\\d{1,2}${ORDINAL_SUFF}?\\s+(?:${MONTH_NAMES}|${MONTH_SHORT})\\s+\\d{4}\\b`, 'gi'
-      )]);
-      // "July 2017"
-      P.push(['DATE_EXACT', new RegExp(`\\b(?:${MONTH_NAMES}|${MONTH_SHORT})\\s+\\d{4}\\b`, 'gi')]);
-      // DD/MM/YYYY or DD-MM-YYYY
-      P.push(['DATE_EXACT', /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g]);
-    }
-
-    if (active.has('FACILITY'))
-      P.push(['FACILITY',
-        /\b(?:Reception\s+(?:Centre|Center)|Closed\s+Controlled\s+Access\s+(?:Centre|Center)|CCAC|Detention\s+(?:Centre|Center)|Open\s+Centre|Camp)\s+[A-Z][\w\s\-]{0,30}\b/gi
-      ]);
-
-    if (active.has('ROUTE'))
-      P.push(['ROUTE',
-        /\b(?:route\s+(?:via|through|from)\s+[A-Z][A-Za-z\-]+(?:\s*[–\-]\s*[A-Z][A-Za-z\-]+)*)\b/gi
-      ]);
-
-    return P;
-  }
-
-  // ── Main entity detector ──────────────────────────────────────────────────
-  function detectEntities(text, level, active) {
-    const entities = [];
-
-    // Pattern-based (non-name, non-country)
-    for (const [cat, re] of buildPatterns(active)) {
-      re.lastIndex = 0;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        entities.push({ cat, text: m[0], start: m.index, end: m.index + m[0].length });
-      }
-    }
-
-    // Countries (exact word match)
-    if (active.has('COUNTRY')) {
-      for (const cty of COUNTRIES) {
-        const re = new RegExp(`\\b${escRe(cty)}\\b`, 'g');
-        let m;
-        while ((m = re.exec(text)) !== null) {
-          entities.push({ cat: 'COUNTRY', text: m[0], start: m.index, end: m.index + m[0].length });
+        for (const e of entities) {
+          EuaaAnonymizer.makePlaceholder(e.text, e.cat);
+          allReplacements.push({ ...e, replacement: '█ REDACTED' });
+        }
+        if (hasManual) {
+          allReplacements.push({ text: str, cat: 'REFCOM', replacement: '█ REDACTED (manual)' });
         }
       }
-    }
 
-    // Nationalities (exact word match)
-    if (active.has('COUNTRY')) {
-      for (const [nat] of Object.entries(NATIONALITY_MAP)) {
-        const re = new RegExp(`\\b${escRe(nat)}\\b`, 'g');
-        let m;
-        while ((m = re.exec(text)) !== null) {
-          entities.push({ cat: 'NATIONALITY', text: m[0], start: m.index, end: m.index + m[0].length });
+      // OCR fallback for image-only pages
+      if (!hasMeaningfulText(pageText.join(' ')) && useOcr) {
+        const ocrData = await runOcr(canvas, `page ${pageNum}`, onStatus);
+        pageText.push((ocrData.text || '').trim());
+
+        for (const word of (ocrData.words || [])) {
+          const wordText = (word.text || '').trim();
+          if (!wordText) continue;
+          const entities = EuaaAnonymizer.detectEntities(wordText, level, active);
+          let hasManual = false;
+          if (manualRx) { manualRx.lastIndex = 0; hasManual = manualRx.test(wordText); manualRx.lastIndex = 0; }
+          if (!entities.length && !hasManual) continue;
+
+          const b = word.bbox || {};
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(b.x0 * scale, b.y0 * scale, (b.x1 - b.x0) * scale, (b.y1 - b.y0) * scale);
+          for (const e of entities) {
+            EuaaAnonymizer.makePlaceholder(e.text, e.cat);
+            allReplacements.push({ ...e, replacement: '█ REDACTED (OCR)' });
+          }
         }
       }
-    }
 
-    // Locations (context-triggered)
-    if (level !== 'light' && active.has('LOCATION')) {
-      const re = /\b(?:in|at|from|to|arrived\s+in|departed\s+from|fled\s+from|left)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        if (m[1]) {
-          const s = m.index + m[0].length - m[1].length;
-          entities.push({ cat: 'LOCATION', text: m[1], start: s, end: s + m[1].length });
-        }
-      }
-    }
+      pageTexts.push(pageText.join(' '));
 
-    // Family terms
-    if (level !== 'light' && active.has('FAMILY_TERM')) {
-      const re = new RegExp(`\\b(?:${FAMILY_TERMS.join('|')})\\b`, 'gi');
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        entities.push({ cat: 'FAMILY_TERM', text: m[0], start: m.index, end: m.index + m[0].length });
-      }
-    }
+      // Add page to jsPDF
+      // Convert canvas to JPEG data URL
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      // Page dimensions in mm (jsPDF uses mm by default)
+      const pxToMm = 25.4 / 96; // 96dpi → mm
+      const mmW = (canvas.width  / SCALE) * pxToMm;
+      const mmH = (canvas.height / SCALE) * pxToMm;
 
-    // ── Person name detection — must come LAST to avoid over-matching ──────────
-    if (active.has('PERSON')) {
-      detectPersonNames(text, entities);
-    }
-
-    return dedupeEntities(entities);
-  }
-
-  // ── Name detection: Arabic/MENA + African + European names ─────────────────
-  /**
-   * Strategy:
-   *  1. Build a candidate token list from the text: tokens that start with
-   *     an uppercase letter OR are a known particle.
-   *  2. Greedily consume consecutive name-like tokens (up to 5) into a
-   *     candidate span.
-   *  3. A candidate is a valid name if it:
-   *       a) has ≥ 2 tokens total
-   *       b) starts with an uppercase name token (not a particle alone)
-   *       c) ends with an uppercase name token (not a particle alone)
-   *       d) is NOT a known legal phrase
-   *       e) is NOT a month name
-   *       f) is NOT an all-uppercase abbreviation
-   *       g) has at least one token that is long enough to be a real name (≥3 chars)
-   *  4. We also separately match particle-prefixed tokens:
-   *       "Al-Rashid", "Abd-Allah", "Um Kulthum" etc. even as stand-alone tokens.
-   */
-  function detectPersonNames(text, entities) {
-    // Tokenise the text keeping track of offsets
-    // A "token" here is a whitespace-separated chunk
-    const tokenRe = /\S+/g;
-    const tokens  = [];
-    let m;
-    while ((m = tokenRe.exec(text)) !== null) {
-      tokens.push({ raw: m[0], start: m.index, end: m.index + m[0].length });
-    }
-
-    const particleSet = new Set(ARABIC_PARTICLES);
-
-    // Helper: strip punctuation at the start/end of a token for analysis
-    function clean(s) { return s.replace(/^[^A-Za-zÀ-ÖØ-öø-ÿ]+|[^A-Za-zÀ-ÖØ-öø-ÿ]+$/g, ''); }
-
-    // Is a token "name-like"? (starts uppercase, contains only name chars)
-    function isNameToken(tok) {
-      const c = clean(tok);
-      if (!c) return false;
-      if (!/^[A-ZÀ-ÖØ-Þ]/.test(c)) return false;       // must start uppercase (Latin + Latin Extended)
-      if (!/^[A-Za-zÀ-ÖØ-öø-ÿ'\-]+$/.test(c)) return false; // only name chars
-      return true;
-    }
-
-    // Is a token an Arabic/MENA particle? (case-insensitive)
-    function isParticle(tok) {
-      const c = clean(tok).toLowerCase();
-      return particleSet.has(c);
-    }
-
-    // Is a token an Arabic/MENA particle that is ATTACHED by hyphen e.g. "Al-Rashid"
-    function isHyphenParticle(tok) {
-      return /^(?:Al|El|Abd|Abu|Bin|Bint|Ibn|Um|Umm|Ould|Ben)-/i.test(clean(tok));
-    }
-
-    // Full token validity: uppercase start OR a particle
-    function isValidNamePart(tok) {
-      const c = clean(tok);
-      if (!c) return false;
-      if (isParticle(tok)) return true;
-      return isNameToken(tok);
-    }
-
-    let i = 0;
-    while (i < tokens.length) {
-      const start = tokens[i];
-
-      // Must start with an uppercase token or a hyphen-particle like "Al-Rashid"
-      if (!isNameToken(start.raw) && !isHyphenParticle(start.raw)) { i++; continue; }
-
-      // Greedily consume up to 5 consecutive valid name parts
-      let j = i;
-      while (j < tokens.length && j < i + 5 && isValidNamePart(tokens[j].raw)) {
-        j++;
+      if (!doc) {
+        doc = new jsPDF({
+          orientation: mmW > mmH ? 'l' : 'p',
+          unit: 'mm',
+          format: [mmW, mmH],
+          compress: true,
+        });
+      } else {
+        doc.addPage([mmW, mmH], mmW > mmH ? 'l' : 'p');
       }
 
-      if (j === i) { i++; continue; }  // nothing consumed
+      doc.addImage(imgData, 'JPEG', 0, 0, mmW, mmH);
+    }
 
-      // Try longest match first, shrink from the right until we have a valid name
-      while (j > i + 1) {
-        // End token must be a real name token (not a lone particle)
-        if (!isNameToken(tokens[j - 1].raw)) { j--; continue; }
+    if (!doc) throw new Error(`"${fileName}" — no pages could be processed.`);
 
-        const span = text.slice(start.start, tokens[j - 1].end);
-        const spanClean = span.trim();
+    const outputBuffer = doc.output('arraybuffer');
+    return { pageTexts, allReplacements, outputBuffer };
+  }
 
-        // Must have at least 2 real tokens (not counting particles as the only content)
-        const realTokens = span.split(/\s+/).filter(t => isNameToken(t));
-        if (realTokens.length < 1) { j--; continue; }
-
-        // Single token must be long enough to be a name by itself — skip
-        // (we only keep single-token matches if they are hyphen-particles)
-        if (j - i === 1 && !isHyphenParticle(span.trim())) { j--; continue; }
-
-        // Skip known false positives
-        if (isLikelyLegalPhrase(spanClean)) { j--; continue; }
-
-        // Skip if ALL tokens are uppercase (abbreviations: IPA, IPAT, UNHCR…)
-        if (/^[A-Z\s\-]+$/.test(spanClean)) { j--; continue; }
-
-        // Skip if first token is a month name
-        const monthRe2 = new RegExp(`^(?:${MONTH_NAMES}|${MONTH_SHORT})\\b`, 'i');
-        if (monthRe2.test(spanClean)) { j--; continue; }
-
-        // Valid — push and advance
-        entities.push({ cat: 'PERSON', text: spanClean, start: start.start, end: tokens[j-1].end });
-        break;
+  // ── Mode 2: Rebuild as text PDF ──────────────────────────────────────────
+  async function extractAllText(pdf, fileName, useOcr, onStatus) {
+    const pages = [];
+    let usedOcr = false;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      if (onStatus) onStatus(`Extracting page ${i}/${pdf.numPages}…`);
+      const page    = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      let text = content.items.map(it => it.str).join(' ').trim();
+      if (!hasMeaningfulText(text) && useOcr) {
+        const { canvas } = await pageToCanvas(page);
+        const ocr = await runOcr(canvas, `page ${i}`, onStatus);
+        text = (ocr.text || '').trim();
+        usedOcr = true;
       }
-
-      // Move past the consumed range (or just one if nothing matched)
-      i = j > i + 1 ? j : i + 1;
+      pages.push(text);
     }
+    return { pages, usedOcr };
+  }
 
-    // ── Additional pass: standalone hyphen-particles like "Al-Rashid" ───────
-    // These might appear alone at the start/end of a sentence and won't be
-    // caught by the two-token requirement above.
-    const hyphenRe = /\b(?:Al|El|Abd|Abu|Bin|Bint|Ibn|Um|Umm|Ben)-[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'\-]{1,}/g;
-    let hm;
-    while ((hm = hyphenRe.exec(text)) !== null) {
-      // Only add if not already covered by a multi-token match
-      const overlap = entities.some(e => hm.index >= e.start && hm.index < e.end);
-      if (!overlap) {
-        entities.push({ cat: 'PERSON', text: hm[0], start: hm.index, end: hm.index + hm[0].length });
+  function rebuildAsPdf(title, text) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+    const mL = 50, mR = 50, mT = 60, lH = 14;
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+    doc.text(title, mL, mT);
+    let y = mT + 22;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    for (const para of text.split(/\n\n+/)) {
+      for (const line of doc.splitTextToSize(para.replace(/\n/g,' '), pageW - mL - mR)) {
+        if (y + lH > pageH - 40) { doc.addPage(); y = mT; }
+        doc.text(line, mL, y); y += lH;
       }
+      y += lH * 0.5;
     }
+    return doc.output('arraybuffer');
   }
 
-  // Deduplicate & resolve overlaps (longest wins, earlier position wins)
-  function dedupeEntities(entities) {
-    entities.sort((a, b) => a.start !== b.start
-      ? a.start - b.start
-      : (b.end - b.start) - (a.end - a.start)
-    );
-    const out = [];
-    let lastEnd = -1;
-    for (const e of entities) {
-      if (e.start < lastEnd) continue;
-      out.push(e);
-      lastEnd = e.end;
-    }
-    return out;
+  async function buildDocxBlob(title, text) {
+    const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
+    const doc = new Document({ sections: [{ children: [
+      new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 28 })], heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: '' }),
+      ...text.split(/\n+/).map(l => new Paragraph({ children: [new TextRun({ text: l || ' ', size: 22 })] })),
+    ]}]});
+    return Packer.toBlob(doc);
   }
 
-  // ── Legal / institutional phrase exclusion list ────────────────────────────
-  // Phrases that look like TitleCase names but are known legal/institutional terms.
-  // Add any recurring headings from your specific document types here.
-  const LEGAL_PHRASES = new Set([
-    // Procedure & institutions
-    'Preliminary Considerations','Subsidiary Protection','Refugee Status',
-    'International Protection','Qualification Directive','European Union',
-    'United Nations','High Commissioner','Protection Agency',
-    'Article Nine','Article Ten','Article Fifteen','Grounds Appeal',
-    'Member States','Human Rights','Geneva Convention','Security Situation',
-    'Risk Assessment','Personal Interview','Evaluation Report',
-    'Protection Tribunal','Supreme Court','Administrative Court',
-    'Country Guidance','Country Information','Home Area',
-    'Appeal Submission','Reply Submissions','Protection Appeals',
-    'Honourable Tribunal','Refugee Convention','Dublin Regulation',
-    'Common European','Asylum System','Reception Conditions',
-    'Procedural Directive','Return Directive','Border Procedure',
-    'Accelerated Procedure','Admissibility Procedure',
-    // Roles / titles that appear TitleCased
-    'Case Worker','Case Officer','Presenting Officer','Legal Representative',
-    'Asylum Seeker','Protection Officer','Country Expert',
-    'Board Member','Tribunal Member','Panel Member',
-    // Generic document-structure phrases
-    'Summary Grounds','Grounds Appeal','Factual Background',
-    'Legal Framework','Relevant Law','Applicable Law',
-    'Legal Basis','Legal Arguments','Factual Summary',
-    'Key Facts','Background Facts','Relevant Facts',
-  ]);
+  // ── Public API ────────────────────────────────────────────────────────────
+  async function process(file, mode, level, active, useOcr, onStatus) {
+    if (onStatus) onStatus(`Reading "${file.name}"…`);
+    const buffer = await file.arrayBuffer();
+    const bytes  = new Uint8Array(buffer);
+    const { pdf, usableBytes } = await loadWithPdfJs(file.name, bytes, onStatus);
 
-  // Single-token words that should NEVER be a name on their own
-  const LEGAL_SINGLE_WORDS = new Set([
-    'The','This','That','These','Those','Their','There',
-    'And','But','For','With','From','Into','Upon',
-    'Her','His','She','Him','They','Them',
-    'Yes','No','Not','Any','All','Each','Both',
-    'Article','Section','Annex','Chapter','Part',
-    'Directive','Convention','Regulation','Protocol','Act','Law',
-    'Court','Tribunal','Agency','Board','Panel','Committee',
-    'Applicant','Appellant','Respondent','Claimant','Defendant',
-    'Ref','Case','File','No','Number','Para','Page',
-    'Note','See','Ibid','Id','Op','Cit','Supra','Infra',
-  ]);
-
-  function isLikelyLegalPhrase(text) {
-    if (!text) return true;
-    if (LEGAL_PHRASES.has(text)) return true;
-    // Single words from the exclusion list
-    if (LEGAL_SINGLE_WORDS.has(text.trim())) return true;
-    // Month + word  e.g. "January Agreement"
-    const monthRe = new RegExp(`^(?:${MONTH_NAMES}|${MONTH_SHORT})\\b`, 'i');
-    if (monthRe.test(text)) return true;
-    // Starts with ALL-CAPS acronym token: "UNHCR Report", "IPA Decision"
-    if (/^[A-Z]{2,}(?:\s|$)/.test(text)) return true;
-    // Entire span is uppercase (e.g. "APPEAL REPLY SUBMISSIONS")
-    if (/^[A-Z\s\-]+$/.test(text)) return true;
-    // Ends with common non-name words  "Protection Act", "Security Situation"
-    if (/\s+(?:Act|Law|Code|Rule|Order|Decree|Regulation|Directive|Convention|Protocol|Annex|Article|Section|Chapter|Part|Clause|Schedule|Appendix|Report|Decision|Assessment|Evaluation|Interview|Submission|Review|Notice|Letter|Form|Document|Certificate|Card|Permit|Visa|Status|Procedure|Process|Policy|Guidance|Instruction|Circular|Bulletin)$/.test(text)) return true;
-    return false;
-  }
-
-  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-
-  // ── Text anonymisation ────────────────────────────────────────────────────
-  function anonymizeText(text, level, active) {
-    const entities = detectEntities(text, level, active);
-    // Apply replacements right-to-left so indices stay valid
-    const sorted = [...entities].sort((a, b) => b.start - a.start);
-    let out = text;
-    const replacements = [];
-    for (const e of sorted) {
-      const repl = makePlaceholder(e.text, e.cat);
-      out = out.slice(0, e.start) + repl + out.slice(e.end);
-      replacements.push({ ...e, replacement: repl });
+    // ── BLACKOUT: canvas-render approach — works on ALL PDFs ─────────────
+    if (mode === 'blackout') {
+      const { pageTexts, allReplacements, outputBuffer } =
+        await applyBlackoutCanvas(pdf, file.name, level, active, useOcr, onStatus);
+      return {
+        mode: 'blackout',
+        previewText: pageTexts.join('\n\n'),
+        replacements: allReplacements,
+        downloads: [{
+          filename: file.name.replace(/\.pdf$/i, '') + '_REDACTED.pdf',
+          blob:     new Blob([outputBuffer], { type: 'application/pdf' }),
+          mimeType: 'application/pdf',
+          dlClass:  'dl-pdf',
+          label:    '⬛ Redacted PDF',
+        }],
+      };
     }
 
-    // Extra demo-safe sweeps
-    if (level === 'demo-safe' && active.has('FAMILY_TERM')) {
-      out = out.replace(/\b\d+\s+children\b/gi, 'family members');
-      out = out.replace(/\b\d{1,2}\s+years?\s+old\b/gi, 'minor person');
-      out = out.replace(/\baged\s+\d{1,2}\b/gi, 'minor person');
-    }
+    // ── REBUILD ──────────────────────────────────────────────────────────
+    const { pages, usedOcr } = await extractAllText(pdf, file.name, useOcr, onStatus);
+    const fullText = pages.join('\n\n');
+    if (!hasMeaningfulText(fullText))
+      throw new Error(`"${file.name}" — no readable text found. ${useOcr ? 'OCR returned no usable text.' : 'Try enabling OCR fallback.'}`);
 
-    return { text: out, replacements: replacements.reverse() };
+    if (onStatus) onStatus(`Anonymising "${file.name}"…`);
+    const { text: anonText, replacements } = EuaaAnonymizer.anonymizeText(fullText, level, active);
+    const baseName = file.name.replace(/\.pdf$/i, '');
+    const title    = `${file.name} (anonymised)`;
+
+    return {
+      mode: usedOcr ? 'rebuild-ocr' : 'rebuild',
+      previewText: anonText,
+      replacements,
+      downloads: [
+        {
+          filename: `${baseName}_anonymised.pdf`,
+          blob:     new Blob([rebuildAsPdf(title, anonText)], { type: 'application/pdf' }),
+          mimeType: 'application/pdf',
+          dlClass:  'dl-pdf',
+          label:    '📄 Anonymised PDF',
+        },
+        {
+          filename: `${baseName}_anonymised.docx`,
+          blob:     await buildDocxBlob(title, anonText),
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          dlClass:  'dl-docx',
+          label:    '📝 Anonymised DOCX',
+        },
+      ],
+    };
   }
 
-  // ── Exported helpers ──────────────────────────────────────────────────────
-  function getEntityMap()    { return _entityMap; }
-  function getSessionStats() {
-    const counts = new Map();
-    for (const { category } of _entityMap.values()) {
-      counts.set(category, (counts.get(category) || 0) + 1);
-    }
-    return counts;
-  }
-
-  return {
-    resetSession,
-    setPrefix,
-    anonymizeText,
-    makePlaceholder,
-    detectEntities,
-    generaliseDate,
-    getEntityMap,
-    getSessionStats,
-    COUNTRIES,
-    NATIONALITY_MAP,
-  };
-
+  return { process };
 })();
 
-window.EuaaAnonymizer = EuaaAnonymizer;
+window.EuaaPdfProcessor = EuaaPdfProcessor;

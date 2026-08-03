@@ -183,6 +183,13 @@ body{font-family:var(--font);background:var(--col-bg);color:var(--col-text);line
 /* Spinner */
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* Refcom input */
+.refcom-box{width:100%;min-height:90px;padding:.65rem .85rem;border:1px solid var(--col-border);border-radius:var(--radius-sm);font-size:.88rem;font-family:'Consolas','Courier New',monospace;background:var(--col-bg);color:var(--col-text);resize:vertical;transition:border-color .15s,box-shadow .15s;line-height:1.7}
+.refcom-box:focus{outline:none;border-color:var(--col-primary);box-shadow:0 0 0 3px rgba(29,78,216,.12)}
+.refcom-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.6rem;min-height:1.4rem}
+.refcom-chip{display:inline-flex;align-items:center;gap:.3rem;background:#1f2937;color:#f9fafb;font-size:.75rem;font-family:'Consolas','Courier New',monospace;padding:.18rem .55rem;border-radius:4px;font-weight:600}
+.refcom-chip-del{cursor:pointer;opacity:.6;font-size:.85rem;line-height:1;background:none;border:none;color:inherit;padding:0 0 0 .2rem}
+.refcom-chip-del:hover{opacity:1}
   </style>
   <!-- Font Awesome icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" />
@@ -446,6 +453,18 @@ body{font-family:var(--font);background:var(--col-bg);color:var(--col-text);line
       </label>
     </div>
 
+    <!-- Refcom manual input -->
+    <div class="option-group" id="refcomGroup">
+      <label class="option-label" for="manualRefcoms"><i class="fa-solid fa-barcode"></i> Refcom / case numbers to black out</label>
+      <p class="field-hint" style="margin-bottom:.6rem;">Type or paste up to 20 reference numbers — one per line, or separated by commas. They will be blacked out in addition to auto-detected ones.</p>
+      <textarea id="manualRefcoms" class="refcom-box" placeholder="e.g.&#10;32939&#10;MTL/2024/12345&#10;SYR-2023-00456"
+        rows="4" spellcheck="false" autocomplete="off"></textarea>
+      <div class="refcom-chips" id="refcomChips"></div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:.5rem;" id="clearRefcomsBtn">
+        <i class="fa-solid fa-xmark"></i> Clear all numbers
+      </button>
+    </div>
+
     <!-- Placeholder prefix -->
     <div class="option-group">
       <label class="option-label" for="personPrefix"><i class="fa-solid fa-user-secret"></i> Person placeholder prefix</label>
@@ -558,6 +577,49 @@ body{font-family:var(--font);background:var(--col-bg);color:var(--col-text);line
 <footer class="site-footer">
   <p>EUAA Monitoring Anonymiser — All processing is done entirely in your browser. No files, text, or data are transmitted to any server. Always review output before external use.</p>
 </footer>
+
+<!-- ─── Refcom chip preview script ─── -->
+<script>
+(function() {
+  function updateChips() {
+    var ta    = document.getElementById('manualRefcoms');
+    var chips = document.getElementById('refcomChips');
+    if (!ta || !chips) return;
+    var vals = ta.value.split(/[\n,;]+/).map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+    chips.innerHTML = '';
+    vals.forEach(function(v) {
+      var chip = document.createElement('span');
+      chip.className = 'refcom-chip';
+      chip.title = 'Click × to remove';
+      var label = document.createTextNode(v);
+      var del = document.createElement('button');
+      del.className = 'refcom-chip-del';
+      del.textContent = '×';
+      del.title = 'Remove ' + v;
+      del.addEventListener('click', function() {
+        // Remove this value from textarea
+        var lines = ta.value.split(/[\n,;]+/).map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0 && s !== v; });
+        ta.value = lines.join('\n');
+        updateChips();
+      });
+      chip.appendChild(label);
+      chip.appendChild(del);
+      chips.appendChild(chip);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var ta  = document.getElementById('manualRefcoms');
+    var btn = document.getElementById('clearRefcomsBtn');
+    if (ta)  ta.addEventListener('input', updateChips);
+    if (btn) btn.addEventListener('click', function() {
+      var ta2 = document.getElementById('manualRefcoms');
+      if (ta2) ta2.value = '';
+      updateChips();
+    });
+  });
+})();
+</script>
 
 <!-- ─── SCRIPTS — all at bottom so DOM is fully ready ─── -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
