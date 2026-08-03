@@ -1,53 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EUAA PDF Redaction Tool</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬛</text></svg>" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" />
-  <style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>EUAA PDF Redaction Tool</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css"/>
+<style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#f0f4f8;--surface:#fff;--border:#d1dae6;--text:#1a2233;--muted:#6b7a96;
-  --primary:#1d4ed8;--primary-h:#1e40af;--primary-l:#dbeafe;
+  --primary:#1d4ed8;--primary-l:#dbeafe;
   --success:#16a34a;--success-l:#dcfce7;
   --danger:#dc2626;--danger-l:#fee2e2;
   --black:#111827;
   --r-sm:6px;--r-md:10px;--r-lg:16px;
-  --sh-sm:0 1px 3px rgba(0,0,0,.08);--sh-md:0 4px 12px rgba(0,0,0,.10);
-  --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --font:'Segoe UI',system-ui,sans-serif;
 }
 html{font-size:16px;scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
-
-/* ── Header ── */
-.site-header{background:linear-gradient(135deg,#111827 0%,#1d4ed8 100%);color:#fff;padding:0 1.5rem;position:sticky;top:0;z-index:100;box-shadow:var(--sh-md)}
+.site-header{background:linear-gradient(135deg,#111827 0%,#1d4ed8 100%);color:#fff;padding:0 1.5rem;position:sticky;top:0;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.10)}
 .header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;min-height:68px;gap:1rem}
 .brand{display:flex;align-items:center;gap:.85rem}
-.brand-icon{font-size:1.9rem;opacity:.9}
-.brand-title{font-size:1.15rem;font-weight:700;color:#fff}
+.brand-icon{font-size:1.9rem}
+.brand-title{font-size:1.15rem;font-weight:700}
 .brand-sub{font-size:.72rem;color:rgba(255,255,255,.65);margin-top:1px}
 .badge{display:inline-flex;align-items:center;gap:.3rem;padding:.22rem .65rem;border-radius:20px;font-size:.7rem;font-weight:600}
 .badge-green{background:rgba(22,163,74,.25);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
 .badge-dark{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.18)}
-
-/* ── Layout ── */
 .wrap{max-width:1100px;margin:2rem auto;padding:0 1.5rem 4rem;display:flex;flex-direction:column;gap:1.5rem}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh-sm);overflow:hidden}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden}
 .card-head{display:flex;align-items:center;gap:.85rem;padding:1.2rem 1.5rem;border-bottom:1px solid var(--border);background:#f8fafc}
 .card-head h2{font-size:1rem;font-weight:700;flex:1}
 .step{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--black);color:#fff;font-size:.78rem;font-weight:700;flex-shrink:0}
-
-/* ── Upload ── */
 .upload-area{padding:2.5rem 1.5rem;display:flex;flex-direction:column;align-items:center;gap:.7rem;border-bottom:1px solid var(--border);transition:background .15s}
 .upload-area.dragover{background:var(--primary-l);border:2px dashed var(--primary);border-radius:var(--r-md)}
 .upload-icon{font-size:2.8rem;color:var(--primary)}
 .upload-label{font-size:1.05rem;font-weight:600}
 .upload-hint{font-size:.83rem;color:var(--muted)}
 .upload-btn-row{display:flex;gap:.75rem;flex-wrap:wrap;justify-content:center;margin-top:.4rem}
-
-/* ── File queue ── */
 .file-queue{padding:1rem 1.5rem}
 .queue-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
 .queue-count{font-size:.83rem;font-weight:600;color:var(--muted)}
@@ -56,41 +46,31 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
 .file-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-item-size{color:var(--muted);font-size:.75rem;flex-shrink:0}
 .file-item-ext{font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:4px;flex-shrink:0;text-transform:uppercase;background:#fee2e2;color:#b91c1c}
-
-/* ── Options ── */
 .opt-group{padding:1.1rem 1.5rem;border-top:1px solid var(--border)}
 .opt-label{display:block;font-size:.82rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.7rem}
 .opt-label i{margin-right:.4rem}
 .field-hint{font-size:.78rem;color:var(--muted);margin-top:.35rem}
-
-/* ── Category grid ── */
 .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.4rem}
 .cat-item{display:flex;align-items:center;gap:.5rem;padding:.5rem .7rem;border-radius:var(--r-sm);border:1px solid var(--border);cursor:pointer;font-size:.86rem;background:var(--bg);transition:background .12s,border-color .12s;user-select:none}
 .cat-item:hover{background:var(--primary-l);border-color:var(--primary)}
 .cat-item:has(input:checked){background:var(--primary-l);border-color:var(--primary);font-weight:600}
 .cat-item input{accent-color:var(--primary);width:15px;height:15px;flex-shrink:0;cursor:pointer}
 .cat-item i{color:var(--primary);font-size:.82rem;flex-shrink:0}
-
-/* ── Bar size control ── */
 .bar-size-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
-.bar-size-row label{font-size:.86rem;font-weight:600;color:var(--text)}
+.bar-size-row label{font-size:.86rem;font-weight:600}
 .range-wrap{display:flex;align-items:center;gap:.6rem;flex:1;min-width:180px}
 input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 .range-val{min-width:3rem;font-size:.86rem;font-weight:700;color:var(--black);font-family:monospace;text-align:right}
-.bar-preview{height:18px;background:var(--black);border-radius:2px;transition:height .15s}
-
-/* ── Manual terms ── */
-.refcom-box{width:100%;padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.86rem;font-family:'Consolas','Courier New',monospace;background:var(--bg);color:var(--text);resize:vertical;transition:border-color .15s,box-shadow .15s;line-height:1.7;min-height:80px}
+.bar-preview{background:var(--black);border-radius:2px;transition:height .15s;width:120px}
+.refcom-box{width:100%;padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.86rem;font-family:monospace;background:var(--bg);color:var(--text);resize:vertical;min-height:80px}
 .refcom-box:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(29,78,216,.12)}
 .chip-row{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.5rem;min-height:1.2rem}
-.chip{display:inline-flex;align-items:center;gap:.25rem;background:var(--black);color:#f9fafb;font-size:.73rem;font-family:'Consolas','Courier New',monospace;padding:.15rem .5rem;border-radius:3px;font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:.25rem;background:var(--black);color:#f9fafb;font-size:.73rem;font-family:monospace;padding:.15rem .5rem;border-radius:3px;font-weight:600}
 .chip-del{cursor:pointer;opacity:.55;background:none;border:none;color:inherit;padding:0 0 0 .15rem;font-size:.9rem;line-height:1}
 .chip-del:hover{opacity:1}
-
-/* ── Buttons ── */
-.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1.1rem;border-radius:var(--r-sm);font-family:var(--font);font-size:.88rem;font-weight:600;border:1px solid transparent;cursor:pointer;transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1.1rem;border-radius:var(--r-sm);font-family:var(--font);font-size:.88rem;font-weight:600;border:1px solid transparent;cursor:pointer;transition:background .15s;text-decoration:none;white-space:nowrap}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-black{background:var(--black);color:#fff;border-color:var(--black)}
+.btn-black{background:var(--black);color:#fff}
 .btn-black:hover:not(:disabled){background:#374151}
 .btn-outline{background:#fff;color:var(--primary);border-color:var(--primary)}
 .btn-outline:hover:not(:disabled){background:var(--primary-l)}
@@ -98,24 +78,16 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 .btn-ghost:hover:not(:disabled){background:var(--bg);color:var(--text)}
 .btn-lg{padding:.75rem 1.5rem;font-size:.98rem}
 .btn-sm{padding:.3rem .65rem;font-size:.78rem}
-
-/* ── Action ── */
 .action-row{padding:1rem 1.5rem;display:flex;flex-wrap:wrap;gap:.7rem;align-items:center}
-
-/* ── Progress bar ── */
 .progress-wrap{padding:.5rem 1.5rem 1rem}
-.progress-label{font-size:.8rem;color:var(--muted);margin-bottom:.4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.progress-label{font-size:.8rem;color:var(--muted);margin-bottom:.4rem}
 .progress-bar-track{height:8px;background:var(--border);border-radius:4px;overflow:hidden}
-.progress-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#1d4ed8,#111827);border-radius:4px;transition:width .25s ease}
-
-/* ── Status ── */
+.progress-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#1d4ed8,#111827);border-radius:4px;transition:width .25s}
 .status-banner{display:flex;align-items:center;gap:.55rem;padding:.8rem 1.5rem;background:#f8fafc;border-top:1px solid var(--border);font-size:.86rem;color:var(--muted)}
 .status-banner.info{background:#f0f7ff;color:var(--primary);border-color:#bfdbfe}
 .status-banner.success{background:var(--success-l);color:var(--success);border-color:#bbf7d0}
 .status-banner.warn{background:#fef3c7;color:#d97706;border-color:#fde68a}
 .status-banner.error{background:var(--danger-l);color:var(--danger);border-color:#fecaca}
-
-/* ── Results ── */
 #resultsContainer{padding:1rem 1.5rem;display:flex;flex-direction:column;gap:1rem}
 .result-card{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
 .result-head{display:flex;align-items:center;gap:.7rem;padding:.8rem 1rem;background:#f8fafc;border-bottom:1px solid var(--border);flex-wrap:wrap}
@@ -123,120 +95,48 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 .result-meta{font-size:.76rem;color:var(--muted)}
 .badge-redacted{background:#111827;color:#f9fafb;font-size:.73rem;padding:.12rem .45rem;border-radius:3px;font-weight:700;flex-shrink:0}
 .result-dl{display:flex;gap:.4rem;flex-wrap:wrap;padding:.55rem 1rem;background:#fafbfc}
-.dl-link{display:inline-flex;align-items:center;gap:.3rem;padding:.32rem .7rem;background:var(--black);color:#fff;border-radius:var(--r-sm);font-size:.82rem;font-weight:600;text-decoration:none;border:none;cursor:pointer;transition:background .12s;font-family:var(--font)}
-.dl-link:hover:not(:disabled){background:#374151}
-.btn-review{background:#1d4ed8;color:#fff}
-.btn-review:hover:not(:disabled){background:#1e40af}
-
-/* ── Spinner ── */
+.dl-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.32rem .7rem;border-radius:var(--r-sm);font-size:.82rem;font-weight:600;border:none;cursor:pointer;font-family:var(--font);transition:background .12s}
+.dl-btn-dark{background:#111827;color:#fff}
+.dl-btn-dark:hover{background:#374151}
+.dl-btn-blue{background:#1d4ed8;color:#fff}
+.dl-btn-blue:hover{background:#1e40af}
 .spinner{display:inline-block;width:15px;height:15px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-
-/* ══════════════════════════════════════════════════════════
-   REVIEW MODAL
-   ══════════════════════════════════════════════════════════ */
-.modal-backdrop{
-  display:none;
-  position:fixed;inset:0;
-  background:rgba(0,0,0,.75);
-  z-index:9000;
-  align-items:stretch;
-  justify-content:stretch;
-  flex-direction:column;
-}
-.modal-backdrop.open{display:flex;}
-.modal-shell{
-  display:flex;flex-direction:column;
-  background:#1a2233;
-  width:100%;height:100%;
-  overflow:hidden;
-}
-/* top bar */
-.modal-topbar{
-  display:flex;align-items:center;gap:.75rem;
-  padding:.7rem 1.2rem;
-  background:#111827;
-  border-bottom:1px solid #374151;
-  flex-shrink:0;
-  flex-wrap:wrap;
-}
-.modal-title{color:#f9fafb;font-size:.95rem;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.modal-hint{color:#9ca3af;font-size:.78rem;flex-shrink:0}
-
-/* canvas area */
-.modal-canvas-area{
-  flex:1;overflow:auto;
-  display:flex;align-items:flex-start;justify-content:center;
-  padding:1.2rem;
-  background:#1a2233;
-  min-height:0;
-}
-#modalCanvasContainer{
-  display:flex;align-items:flex-start;justify-content:center;
-  width:100%;
-}
-#modalDisplayCanvas{
-  box-shadow:0 0 0 2px #374151, 0 8px 32px rgba(0,0,0,.5);
-  border-radius:4px;
-  max-width:100%;
-}
-
-/* bottom toolbar */
-.modal-toolbar{
-  display:flex;align-items:center;gap:.6rem;
-  padding:.7rem 1.2rem;
-  background:#111827;
-  border-top:1px solid #374151;
-  flex-shrink:0;
-  flex-wrap:wrap;
-}
-.modal-nav-group{display:flex;align-items:center;gap:.5rem}
-.modal-page-info{color:#d1d5db;font-size:.85rem;font-weight:600;min-width:100px;text-align:center}
-
-/* dark modal buttons */
-.btn-modal{
-  display:inline-flex;align-items:center;gap:.35rem;
-  padding:.4rem .85rem;
-  border-radius:6px;font-size:.83rem;font-weight:600;
-  border:1px solid transparent;cursor:pointer;
-  transition:background .12s;font-family:var(--font);
-  white-space:nowrap;
-}
-.btn-modal:disabled{opacity:.35;cursor:not-allowed}
-.btn-modal-ghost{background:transparent;color:#d1d5db;border-color:#374151}
-.btn-modal-ghost:hover:not(:disabled){background:#374151;color:#f9fafb}
-.btn-modal-danger{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
-.btn-modal-danger:hover:not(:disabled){background:#991b1b}
-.btn-modal-primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
-.btn-modal-primary:hover:not(:disabled){background:#1e40af}
-.btn-modal-success{background:#15803d;color:#fff;border-color:#15803d}
-.btn-modal-success:hover:not(:disabled){background:#166534}
-
-/* thickness row inside modal */
-.modal-thickness-row{display:flex;align-items:center;gap:.5rem;color:#d1d5db;font-size:.8rem}
-.modal-thickness-row input[type=range]{width:90px;accent-color:#6366f1}
-.modal-thickness-val{font-family:monospace;font-weight:700;color:#a5b4fc;min-width:32px}
-
-/* separator */
+/* ── MODAL ── */
+#reviewModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;flex-direction:column}
+#reviewModal.open{display:flex}
+.modal-shell{display:flex;flex-direction:column;background:#1a2233;width:100%;height:100%;overflow:hidden}
+.modal-topbar{display:flex;align-items:center;gap:.75rem;padding:.7rem 1.2rem;background:#111827;border-bottom:1px solid #374151;flex-shrink:0;flex-wrap:wrap}
+.modal-title{color:#f9fafb;font-size:.95rem;font-weight:700;flex:1}
+.modal-hint{color:#9ca3af;font-size:.78rem}
+.modal-canvas-area{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:1.2rem;background:#1a2233;min-height:0}
+#modalCanvasContainer{display:flex;align-items:flex-start;justify-content:center;width:100%}
+.modal-toolbar{display:flex;align-items:center;gap:.6rem;padding:.7rem 1.2rem;background:#111827;border-top:1px solid #374151;flex-shrink:0;flex-wrap:wrap}
+.modal-page-info{color:#d1d5db;font-size:.85rem;font-weight:600;min-width:90px;text-align:center}
+.mbtn{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .85rem;border-radius:6px;font-size:.83rem;font-weight:600;border:1px solid transparent;cursor:pointer;transition:background .12s;font-family:var(--font);white-space:nowrap}
+.mbtn:disabled{opacity:.35;cursor:not-allowed}
+.mbtn-ghost{background:transparent;color:#d1d5db;border-color:#374151}
+.mbtn-ghost:hover:not(:disabled){background:#374151;color:#f9fafb}
+.mbtn-red{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
+.mbtn-red:hover:not(:disabled){background:#991b1b}
+.mbtn-green{background:#15803d;color:#fff}
+.mbtn-green:hover:not(:disabled){background:#166534}
 .modal-sep{width:1px;height:24px;background:#374151;flex-shrink:0}
-
-/* ── Footer ── */
+.thick-row{display:flex;align-items:center;gap:.5rem;color:#d1d5db;font-size:.8rem}
+.thick-row input[type=range]{width:90px;accent-color:#6366f1}
+.thick-val{font-family:monospace;font-weight:700;color:#a5b4fc;min-width:32px}
 .site-footer{text-align:center;padding:1.5rem 1rem;font-size:.78rem;color:var(--muted);border-top:1px solid var(--border);background:var(--surface);margin-top:2rem}
-::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 @media(max-width:680px){
   .wrap{padding:0 1rem 3rem}
   .cat-grid{grid-template-columns:1fr 1fr}
   .action-row{flex-direction:column;align-items:stretch}
   .btn-lg{justify-content:center}
-  .modal-toolbar{gap:.35rem}
-  .modal-thickness-row input[type=range]{width:60px}
 }
-  </style>
+</style>
 </head>
 <body>
 
-<!-- ── HEADER ── -->
 <header class="site-header">
   <div class="header-inner">
     <div class="brand">
@@ -255,373 +155,734 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 
 <main class="wrap">
 
-  <!-- ── STEP 1: Upload ── -->
-  <section class="card" id="upload-card">
-    <div class="card-head">
-      <span class="step">1</span>
-      <h2>Upload PDF files</h2>
-    </div>
-
-    <div class="upload-area" id="dropZone">
-      <div class="upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-      <p class="upload-label">Drag &amp; drop PDF files here</p>
-      <p class="upload-hint">Only PDF files are supported</p>
-      <div class="upload-btn-row">
-        <label class="btn btn-outline" style="cursor:pointer;">
-          <i class="fa-solid fa-file-pdf"></i> Select PDF files
-          <input id="fileInput" type="file" multiple accept=".pdf" style="display:none;" />
-        </label>
-        <label class="btn btn-outline" style="cursor:pointer;">
-          <i class="fa-solid fa-folder-open"></i> Select folder
-          <input id="folderInput" type="file" webkitdirectory directory multiple style="display:none;" />
-        </label>
-      </div>
-    </div>
-
-    <script>
-    (function(){
-      window._redactFiles = [];
-      function fmtBytes(n){if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB';}
-      function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-      window.addFilesToQueue = function(raw){
-        var seen=new Set(window._redactFiles.map(function(f){return f.name;}));
-        var added=0;
-        for(var i=0;i<raw.length;i++){
-          var f=raw[i];
-          var name=f.webkitRelativePath||f.relativePath||f.name||'';
-          var ext=(name.split('.').pop()||'').toLowerCase();
-          if(ext!=='pdf')continue;
-          if(seen.has(name))continue;
-          window._redactFiles.push({file:f,name:name,size:f.size});
-          seen.add(name); added++;
-        }
-        renderQ();
-        if(added>0){
-          var sb=document.getElementById('statusText');
-          if(sb)sb.textContent=window._redactFiles.length+' PDF(s) ready.';
-          var bn=document.getElementById('statusBanner');
-          if(bn)bn.className='status-banner info';
-        }
-        var pb=document.getElementById('processBtn');
-        if(pb)pb.disabled=window._redactFiles.length===0;
-      };
-      function renderQ(){
-        var n=window._redactFiles.length;
-        var cnt=document.getElementById('fileCount');
-        var lst=document.getElementById('fileList');
-        var qw=document.getElementById('fileQueue');
-        if(!cnt||!lst||!qw)return;
-        cnt.textContent=n+' file'+(n===1?'':'s')+' queued';
-        lst.innerHTML='';
-        window._redactFiles.forEach(function(f){
-          var li=document.createElement('li');
-          li.className='file-item';
-          li.innerHTML='<i class="fa-solid fa-file-pdf" style="color:#dc2626;flex-shrink:0"></i>'+
-            '<span class="file-item-name" title="'+esc(f.name)+'">'+esc(f.name)+'</span>'+
-            '<span class="file-item-size">'+fmtBytes(f.size)+'</span>'+
-            '<span class="file-item-ext">pdf</span>';
-          lst.appendChild(li);
-        });
-        qw.style.display=n>0?'':'none';
-      }
-      function wire(id){
-        var el=document.getElementById(id);
-        if(!el)return;
-        el.addEventListener('change',function(){
-          if(this.files&&this.files.length)window.addFilesToQueue(Array.prototype.slice.call(this.files));
-          this.value='';
-        });
-      }
-      wire('fileInput'); wire('folderInput');
-      document.addEventListener('dragover',function(e){e.preventDefault();});
-      document.addEventListener('drop',function(e){e.preventDefault();});
-      var zone=document.getElementById('dropZone');
-      if(zone){
-        zone.addEventListener('dragenter',function(e){e.preventDefault();zone.classList.add('dragover');});
-        zone.addEventListener('dragover',function(e){e.preventDefault();zone.classList.add('dragover');});
-        zone.addEventListener('dragleave',function(e){if(!zone.contains(e.relatedTarget))zone.classList.remove('dragover');});
-        zone.addEventListener('drop',function(e){
-          e.preventDefault();e.stopPropagation();zone.classList.remove('dragover');
-          var files=[];
-          var items=e.dataTransfer&&e.dataTransfer.items;
-          if(items&&items.length&&items[0].webkitGetAsEntry){
-            var pending=0;
-            function walk(entry,prefix){
-              prefix=prefix||'';
-              if(entry.isFile){pending++;entry.file(function(f){
-                try{Object.defineProperty(f,'relativePath',{value:prefix+f.name,configurable:true});}catch(ex){}
-                files.push(f);pending--;if(pending===0)window.addFilesToQueue(files);
-              },function(){pending--;if(pending===0)window.addFilesToQueue(files);});}
-              else if(entry.isDirectory){pending++;var r=entry.createReader();
-                r.readEntries(function(ents){pending--;
-                  for(var j=0;j<ents.length;j++)walk(ents[j],prefix+entry.name+'/');
-                  if(pending===0)window.addFilesToQueue(files);
-                },function(){pending--;if(pending===0)window.addFilesToQueue(files);});}
-            }
-            var any=false;
-            for(var i=0;i<items.length;i++){var ent=items[i].webkitGetAsEntry&&items[i].webkitGetAsEntry();if(ent){any=true;walk(ent,'');}}
-            if(!any)window.addFilesToQueue([]);
-          } else {
-            var dt=e.dataTransfer&&e.dataTransfer.files;
-            if(dt)window.addFilesToQueue(Array.prototype.slice.call(dt));
-          }
-        });
-      }
-    })();
-    </script>
-
-    <div class="file-queue" id="fileQueue" style="display:none;">
-      <div class="queue-header">
-        <span id="fileCount" class="queue-count">0 files</span>
-        <button class="btn btn-ghost btn-sm" id="clearFilesBtn"><i class="fa-solid fa-xmark"></i> Clear list</button>
-      </div>
-      <ul class="file-list" id="fileList"></ul>
-    </div>
-  </section>
-
-  <!-- ── STEP 2: Redaction settings ── -->
-  <section class="card" id="options-card">
-    <div class="card-head">
-      <span class="step">2</span>
-      <h2>Redaction settings</h2>
-    </div>
-
-    <!-- Auto-detect categories -->
-    <div class="opt-group">
-      <label class="opt-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-detect &amp; black out</label>
-      <p class="field-hint" style="margin-bottom:.75rem;">Select which types of information to automatically find and cover with a black bar.</p>
-      <div class="cat-grid">
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="PERSON" checked /><i class="fa-solid fa-user"></i> Names / persons</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="CASE_ID" checked /><i class="fa-solid fa-hashtag"></i> Case / Refcom numbers</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="PASSPORT_OR_ID" checked /><i class="fa-solid fa-id-card"></i> IDs / passports</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="ADDRESS" checked /><i class="fa-solid fa-map-marker-alt"></i> Addresses</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="EMAIL" checked /><i class="fa-solid fa-envelope"></i> Email addresses</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="PHONE" checked /><i class="fa-solid fa-phone"></i> Phone numbers</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="DATE_EXACT" checked /><i class="fa-solid fa-calendar-day"></i> Exact dates</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="COUNTRY" checked /><i class="fa-solid fa-flag"></i> Countries / nationalities</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="LOCATION" checked /><i class="fa-solid fa-location-dot"></i> Locations / cities</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="FACILITY" checked /><i class="fa-solid fa-building"></i> Facilities / centres</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="ROUTE" checked /><i class="fa-solid fa-route"></i> Travel routes</label>
-        <label class="cat-item"><input type="checkbox" class="entity-toggle" value="FAMILY_TERM" checked /><i class="fa-solid fa-people-group"></i> Family details</label>
-      </div>
-    </div>
-
-    <!-- Manual terms to black out -->
-    <div class="opt-group">
-      <label class="opt-label" for="manualTerms"><i class="fa-solid fa-keyboard"></i> Manual terms to auto black out</label>
-      <p class="field-hint" style="margin-bottom:.6rem;">Type specific words, numbers or phrases — one per line. Every exact match in the PDF will be blacked out automatically.</p>
-      <textarea id="manualTerms" class="refcom-box" rows="4" spellcheck="false" autocomplete="off"
-        placeholder="e.g.&#10;32939&#10;MTL/2024/12345&#10;John Smith&#10;SYR-2023-00456"></textarea>
-      <div class="chip-row" id="termChips"></div>
-    </div>
-
-    <!-- Black bar thickness -->
-    <div class="opt-group">
-      <label class="opt-label"><i class="fa-solid fa-expand"></i> Auto-bar thickness (padding)</label>
-      <p class="field-hint" style="margin-bottom:.75rem;">Increase if bars are not fully covering text. The bar extends above and below each detected word.</p>
-      <div class="bar-size-row">
-        <label>Padding (px):</label>
-        <div class="range-wrap">
-          <input type="range" id="barPadding" min="0" max="20" value="4" step="1" />
-          <span class="range-val" id="barPaddingVal">4 px</span>
-        </div>
-        <div>
-          <div style="font-size:.75rem;color:var(--muted);margin-bottom:.3rem;">Preview:</div>
-          <div class="bar-preview" id="barPreview" style="width:120px;height:18px;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- OCR toggle -->
-    <div class="opt-group" style="display:flex;align-items:flex-start;gap:1rem;">
-      <label style="display:flex;align-items:flex-start;gap:.8rem;cursor:pointer;">
-        <input type="checkbox" id="ocrToggle" checked style="width:16px;height:16px;margin-top:3px;accent-color:var(--black);cursor:pointer;" />
-        <span>
-          <strong>OCR fallback for scanned PDFs</strong><br>
-          <span style="font-size:.8rem;color:var(--muted);">Enables redaction on image-based / scanned PDFs. Slower but thorough.</span>
-        </span>
+<!-- STEP 1: Upload -->
+<section class="card" id="upload-card">
+  <div class="card-head"><span class="step">1</span><h2>Upload PDF files</h2></div>
+  <div class="upload-area" id="dropZone">
+    <div class="upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+    <p class="upload-label">Drag &amp; drop PDF files here</p>
+    <p class="upload-hint">PDF files only</p>
+    <div class="upload-btn-row">
+      <label class="btn btn-outline" style="cursor:pointer">
+        <i class="fa-solid fa-file-pdf"></i> Select PDF files
+        <input id="fileInput" type="file" multiple accept=".pdf" style="display:none"/>
       </label>
     </div>
-  </section>
+  </div>
+  <div class="file-queue" id="fileQueue" style="display:none">
+    <div class="queue-header">
+      <span id="fileCount" class="queue-count">0 files</span>
+      <button class="btn btn-ghost btn-sm" id="clearFilesBtn"><i class="fa-solid fa-xmark"></i> Clear list</button>
+    </div>
+    <ul class="file-list" id="fileList"></ul>
+  </div>
+</section>
 
-  <!-- ── STEP 3: Redact ── -->
-  <section class="card" id="action-card">
-    <div class="card-head">
-      <span class="step">3</span>
-      <h2>Apply redaction &amp; download</h2>
+<!-- STEP 2: Settings -->
+<section class="card" id="options-card">
+  <div class="card-head"><span class="step">2</span><h2>Redaction settings</h2></div>
+  <div class="opt-group">
+    <label class="opt-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-detect categories</label>
+    <p class="field-hint" style="margin-bottom:.75rem">Select what to automatically black out.</p>
+    <div class="cat-grid">
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="PERSON" checked><i class="fa-solid fa-user"></i> Names / persons</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="CASE_ID" checked><i class="fa-solid fa-hashtag"></i> Case / Refcom numbers</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="PASSPORT_OR_ID" checked><i class="fa-solid fa-id-card"></i> IDs / passports</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="ADDRESS" checked><i class="fa-solid fa-map-marker-alt"></i> Addresses</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="EMAIL" checked><i class="fa-solid fa-envelope"></i> Email addresses</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="PHONE" checked><i class="fa-solid fa-phone"></i> Phone numbers</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="DATE_EXACT" checked><i class="fa-solid fa-calendar-day"></i> Exact dates</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="COUNTRY" checked><i class="fa-solid fa-flag"></i> Countries</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="LOCATION" checked><i class="fa-solid fa-location-dot"></i> Locations / cities</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="FACILITY" checked><i class="fa-solid fa-building"></i> Facilities / centres</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="ROUTE" checked><i class="fa-solid fa-route"></i> Travel routes</label>
+      <label class="cat-item"><input type="checkbox" class="entity-toggle" value="FAMILY_TERM" checked><i class="fa-solid fa-people-group"></i> Family details</label>
     </div>
-    <div class="action-row">
-      <button class="btn btn-black btn-lg" id="processBtn" disabled>
-        <i class="fa-solid fa-square"></i> Apply black bars
-      </button>
-      <button class="btn btn-outline btn-lg" id="downloadAllBtn" disabled>
-        <i class="fa-solid fa-download"></i> Download all (ZIP)
-      </button>
-      <button class="btn btn-ghost btn-lg" id="clearSessionBtn">
-        <i class="fa-solid fa-rotate-left"></i> Clear session
-      </button>
-    </div>
-    <div class="progress-wrap" id="progressWrap" style="display:none;">
-      <div class="progress-label" id="progressLabel">Processing…</div>
-      <div class="progress-bar-track">
-        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+  </div>
+  <div class="opt-group">
+    <label class="opt-label" for="manualTerms"><i class="fa-solid fa-keyboard"></i> Manual terms to black out</label>
+    <p class="field-hint" style="margin-bottom:.6rem">One word/phrase per line — every exact match will be blacked out.</p>
+    <textarea id="manualTerms" class="refcom-box" rows="3" spellcheck="false" placeholder="e.g.&#10;32939&#10;John Smith&#10;MTL/2024/12345"></textarea>
+    <div class="chip-row" id="termChips"></div>
+  </div>
+  <div class="opt-group">
+    <label class="opt-label"><i class="fa-solid fa-expand"></i> Bar thickness (padding)</label>
+    <p class="field-hint" style="margin-bottom:.75rem">Increase if bars don't fully cover text.</p>
+    <div class="bar-size-row">
+      <label>Padding:</label>
+      <div class="range-wrap">
+        <input type="range" id="barPadding" min="0" max="20" value="4" step="1"/>
+        <span class="range-val" id="barPaddingVal">4 px</span>
+      </div>
+      <div>
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:.3rem">Preview:</div>
+        <div class="bar-preview" id="barPreview" style="height:18px"></div>
       </div>
     </div>
-    <div class="status-banner info" id="statusBanner">
-      <i class="fa-solid fa-circle-info"></i>
-      <span id="statusText">Upload PDF files above to get started.</span>
-    </div>
-  </section>
+  </div>
+  <div class="opt-group" style="display:flex;align-items:flex-start;gap:1rem">
+    <label style="display:flex;align-items:flex-start;gap:.8rem;cursor:pointer">
+      <input type="checkbox" id="ocrToggle" checked style="width:16px;height:16px;margin-top:3px;accent-color:var(--black);cursor:pointer"/>
+      <span><strong>OCR fallback for scanned PDFs</strong><br>
+      <span style="font-size:.8rem;color:var(--muted)">Slower but handles image-only PDFs.</span></span>
+    </label>
+  </div>
+</section>
 
-  <!-- ── STEP 4: Results ── -->
-  <section class="card" id="results-card" style="display:none;">
-    <div class="card-head">
-      <span class="step">4</span>
-      <h2>Redacted files</h2>
-      <div style="margin-left:auto;display:flex;align-items:center;gap:.5rem;">
-        <span style="font-size:.78rem;color:var(--muted);">Processed in browser only</span>
-        <i class="fa-solid fa-lock" style="color:var(--success)"></i>
-      </div>
+<!-- STEP 3: Process -->
+<section class="card" id="action-card">
+  <div class="card-head"><span class="step">3</span><h2>Apply redaction &amp; download</h2></div>
+  <div class="action-row">
+    <button class="btn btn-black btn-lg" id="processBtn" disabled>
+      <i class="fa-solid fa-square"></i> Apply black bars
+    </button>
+    <button class="btn btn-outline btn-lg" id="downloadAllBtn" disabled>
+      <i class="fa-solid fa-download"></i> Download all (ZIP)
+    </button>
+    <button class="btn btn-ghost btn-lg" id="clearSessionBtn">
+      <i class="fa-solid fa-rotate-left"></i> Clear session
+    </button>
+  </div>
+  <div class="progress-wrap" id="progressWrap" style="display:none">
+    <div class="progress-label" id="progressLabel">Processing…</div>
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill"></div></div>
+  </div>
+  <div class="status-banner info" id="statusBanner">
+    <i class="fa-solid fa-circle-info"></i>
+    <span id="statusText">Upload PDF files above to get started.</span>
+  </div>
+</section>
+
+<!-- STEP 4: Results -->
+<section class="card" id="results-card" style="display:none">
+  <div class="card-head">
+    <span class="step">4</span><h2>Redacted files</h2>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:.5rem">
+      <span style="font-size:.78rem;color:var(--muted)">Processed in browser only</span>
+      <i class="fa-solid fa-lock" style="color:var(--success)"></i>
     </div>
-    <div id="resultsContainer"></div>
-  </section>
+  </div>
+  <div id="resultsContainer"></div>
+</section>
 
 </main>
 
-<footer class="site-footer">
-  EUAA PDF Redaction Tool — All processing is done entirely in your browser. No files or data are transmitted to any server.
-</footer>
+<footer class="site-footer">EUAA PDF Redaction Tool — All processing is done entirely in your browser. No files or data are sent to any server.</footer>
 
-
-<!-- ══════════════════════════════════════════════════════════════════════════
-     MANUAL REVIEW MODAL
-     Full-screen overlay. Shows each page as a canvas.
-     User draws black bars by clicking + dragging.
-     ══════════════════════════════════════════════════════════════════════════ -->
-<div id="reviewModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Manual bar review">
+<!-- REVIEW MODAL -->
+<div id="reviewModal" role="dialog" aria-modal="true">
   <div class="modal-shell">
-
-    <!-- Top bar -->
     <div class="modal-topbar">
       <span class="modal-title" id="modalTitle">Review &amp; add manual bars</span>
       <span class="modal-hint"><i class="fa-solid fa-hand-pointer"></i> Click &amp; drag to draw a black bar</span>
-      <button class="btn-modal btn-modal-ghost" id="modalCloseBtn" title="Close without saving"><i class="fa-solid fa-xmark"></i> Close</button>
+      <button class="mbtn mbtn-ghost" id="modalCloseBtn"><i class="fa-solid fa-xmark"></i> Close</button>
     </div>
-
-    <!-- Canvas area -->
-    <div class="modal-canvas-area">
-      <div id="modalCanvasContainer"></div>
-    </div>
-
-    <!-- Bottom toolbar -->
+    <div class="modal-canvas-area"><div id="modalCanvasContainer"></div></div>
     <div class="modal-toolbar">
-      <!-- Page navigation -->
-      <div class="modal-nav-group">
-        <button class="btn-modal btn-modal-ghost" id="modalPrevBtn" title="Previous page">
-          <i class="fa-solid fa-chevron-left"></i> Prev
-        </button>
-        <span class="modal-page-info" id="modalPageInfo">Page 1 of 1</span>
-        <button class="btn-modal btn-modal-ghost" id="modalNextBtn" title="Next page">
-          Next <i class="fa-solid fa-chevron-right"></i>
-        </button>
-      </div>
-
+      <button class="mbtn mbtn-ghost" id="modalPrevBtn"><i class="fa-solid fa-chevron-left"></i> Prev</button>
+      <span class="modal-page-info" id="modalPageInfo">Page 1 of 1</span>
+      <button class="mbtn mbtn-ghost" id="modalNextBtn">Next <i class="fa-solid fa-chevron-right"></i></button>
       <div class="modal-sep"></div>
-
-      <!-- Bar thickness for manual draws -->
-      <div class="modal-thickness-row">
-        <i class="fa-solid fa-minus" style="font-size:.7rem"></i>
-        <label for="modalBarThickness" style="white-space:nowrap;">Bar height:</label>
-        <input type="range" id="modalBarThickness" min="4" max="60" value="16" step="1" />
-        <i class="fa-solid fa-plus" style="font-size:.7rem"></i>
-        <span class="modal-thickness-val" id="modalBarThicknessVal">16 px</span>
+      <div class="thick-row">
+        <label for="modalBarThickness">Bar height:</label>
+        <input type="range" id="modalBarThickness" min="4" max="60" value="16"/>
+        <span class="thick-val" id="modalBarThicknessVal">16 px</span>
       </div>
-
       <div class="modal-sep"></div>
-
-      <!-- Undo last bar on this page -->
-      <button class="btn-modal btn-modal-danger" id="modalUndoBtn" title="Undo last bar on this page">
-        <i class="fa-solid fa-rotate-left"></i> Undo
-      </button>
-
+      <button class="mbtn mbtn-red" id="modalUndoBtn"><i class="fa-solid fa-rotate-left"></i> Undo</button>
       <div style="flex:1"></div>
-
-      <!-- Cancel -->
-      <button class="btn-modal btn-modal-ghost" id="modalCancelBtn">
-        Cancel
-      </button>
-
-      <!-- Finalise + download -->
-      <button class="btn-modal btn-modal-success" id="modalDownloadBtn">
-        <i class="fa-solid fa-download"></i> Finalise &amp; download
-      </button>
+      <button class="mbtn mbtn-ghost" id="modalCancelBtn">Cancel</button>
+      <button class="mbtn mbtn-green" id="modalDownloadBtn"><i class="fa-solid fa-download"></i> Finalise &amp; download</button>
     </div>
-
   </div>
 </div>
 
-
-<!-- ── Inline scripts (no CDN needed) ── -->
-<script>
-(function(){
-  /* Bar padding preview */
-  var slider  = document.getElementById('barPadding');
-  var valLbl  = document.getElementById('barPaddingVal');
-  var preview = document.getElementById('barPreview');
-  function updateBarPreview(){
-    var v = parseInt(slider.value,10);
-    valLbl.textContent = v + ' px';
-    preview.style.height = (10 + v*2) + 'px';
-  }
-  slider.addEventListener('input', updateBarPreview);
-  updateBarPreview();
-
-  /* Manual terms chips */
-  var ta      = document.getElementById('manualTerms');
-  var chipRow = document.getElementById('termChips');
-  function updateChips(){
-    var vals = ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
-    chipRow.innerHTML = '';
-    vals.forEach(function(v){
-      var chip = document.createElement('span');
-      chip.className = 'chip';
-      var lbl = document.createTextNode(v);
-      var del = document.createElement('button');
-      del.className = 'chip-del';
-      del.textContent = '×';
-      del.title = 'Remove "'+v+'"';
-      del.addEventListener('click', function(){
-        var lines = ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0 && s!==v;});
-        ta.value = lines.join('\n');
-        updateChips();
-      });
-      chip.appendChild(lbl);
-      chip.appendChild(del);
-      chipRow.appendChild(chip);
-    });
-  }
-  ta.addEventListener('input', updateChips);
-
-  /* Modal bar-thickness live label */
-  var mSlider = document.getElementById('modalBarThickness');
-  var mLbl    = document.getElementById('modalBarThicknessVal');
-  mSlider.addEventListener('input', function(){
-    mLbl.textContent = this.value + ' px';
-  });
-})();
-</script>
-
-<!-- ── CDN libraries ── -->
+<!-- CDN libraries -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<!-- ALL APP LOGIC — inlined so there are zero caching or file-loading issues -->
 <script>
-  if(typeof pdfjsLib!=='undefined')
-    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+// ── PDF.js worker ──────────────────────────────────────────────────────────
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ANONYMIZER — entity detection for auto-redact categories
+// ══════════════════════════════════════════════════════════════════════════
+const EuaaAnonymizer = (function() {
+  const COUNTRIES = ['Afghanistan','Albania','Algeria','Armenia','Azerbaijan','Bangladesh','Belarus','Belgium','Bosnia','Bulgaria','Cameroon','Chad','Colombia','Croatia','Cyprus','DRC','Egypt','Eritrea','Ethiopia','France','Gambia','Georgia','Germany','Ghana','Greece','Guinea','Hungary','India','Iran','Iraq','Israel','Italy','Jordan','Kosovo','Lebanon','Libya','Mali','Malta','Morocco','Nepal','Netherlands','Nigeria','Pakistan','Palestine','Poland','Romania','Russia','Serbia','Sierra Leone','Somalia','Spain','Sri Lanka','Sudan','Syria','Turkey','Uganda','Ukraine','Vietnam','Yemen','Zimbabwe'];
+  const NAT_MAP = {'Afghan':'Afghanistan','Albanian':'Albania','Algerian':'Algeria','Armenian':'Armenia','Bangladeshi':'Bangladesh','Belarusian':'Belarus','Bosnian':'Bosnia','Bulgarian':'Bulgaria','Cameroonian':'Cameroon','Chadian':'Chad','Colombian':'Colombia','Croatian':'Croatia','Cypriot':'Cyprus','Congolese':'DRC','Egyptian':'Egypt','Eritrean':'Eritrea','Ethiopian':'Ethiopia','French':'France','Gambian':'Gambia','Georgian':'Georgia','German':'Germany','Ghanaian':'Ghana','Greek':'Greece','Guinean':'Guinea','Hungarian':'Hungary','Indian':'India','Iranian':'Iran','Iraqi':'Iraq','Israeli':'Israel','Italian':'Italy','Jordanian':'Jordan','Kosovar':'Kosovo','Lebanese':'Lebanon','Libyan':'Libya','Malian':'Mali','Maltese':'Malta','Moroccan':'Morocco','Nepalese':'Nepal','Nepali':'Nepal','Dutch':'Netherlands','Nigerian':'Nigeria','Pakistani':'Pakistan','Palestinian':'Palestine','Polish':'Poland','Romanian':'Romania','Russian':'Russia','Serbian':'Serbia','Somali':'Somalia','Spanish':'Spain','Sri Lankan':'Sri Lanka','Sudanese':'Sudan','Syrian':'Syria','Turkish':'Turkey','Ugandan':'Uganda','Ukrainian':'Ukraine','Vietnamese':'Vietnam','Yemeni':'Yemen','Zimbabwean':'Zimbabwe'};
+  const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
+  const PARTICLES = new Set(['al','el','ul','abu','abd','abdi','bin','bint','ibn','um','umm','ben','van','von','de','di','du','del','mac','mc']);
+  const LEGAL = new Set(['The','This','That','These','Their','And','But','For','With','From','Her','His','She','They','Yes','No','Not','Any','All','Article','Section','Court','Tribunal','Agency','Applicant','Appellant','Respondent','Claimant','Ref','Case','File','No','Page']);
+  function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+  function isNameTok(s){s=s.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g,'');return s.length>0&&/^[A-Z]/.test(s)&&/^[A-Za-z'\-]+$/.test(s);}
+  function detectEntities(text, level, active) {
+    const ents = [];
+    // Emails
+    if(active.has('EMAIL')){const re=/\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g;let m;while((m=re.exec(text))!==null)ents.push({cat:'EMAIL',text:m[0],start:m.index,end:m.index+m[0].length});}
+    // Phones
+    if(active.has('PHONE')){const re=/(?:\+|00)\d[\d\s().\-]{6,}\d|\b\d{3,4}[\s.\-]\d{3,4}[\s.\-]\d{3,4}\b/g;let m;while((m=re.exec(text))!==null)ents.push({cat:'PHONE',text:m[0],start:m.index,end:m.index+m[0].length});}
+    // Case IDs / Refcom
+    if(active.has('CASE_ID')){
+      [[/\bRefcom\s*(?:no\.?|number|num\.?|#|:)?\s*:?\s*\d{3,10}\b/gi],[/\b[A-Z]{2,4}[\/\-]\d{4}[\/\-]\d{3,8}\b/g],[/\bIPAT\s+(?:reference|ref\.?)\s*[:\-]?\s*\S+/gi],[/\b(?:Case|File|Ref)\s*(?:No\.?)?\s*[:\-]?\s*[A-Z0-9]{2,}[\/\-]?\d{2,}\b/gi]].forEach(function(arr){const re=arr[0];let m;while((m=re.exec(text))!==null)ents.push({cat:'CASE_ID',text:m[0],start:m.index,end:m.index+m[0].length});});
+    }
+    // Dates
+    if(active.has('DATE_EXACT')){
+      const r1=new RegExp('\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:'+MONTHS+')\\s+\\d{4}\\b','gi');
+      const r2=new RegExp('\\b(?:'+MONTHS+')\\s+\\d{4}\\b','gi');
+      const r3=/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g;
+      [r1,r2,r3].forEach(function(re){let m;while((m=re.exec(text))!==null)ents.push({cat:'DATE_EXACT',text:m[0],start:m.index,end:m.index+m[0].length});});
+    }
+    // Countries
+    if(active.has('COUNTRY')){
+      COUNTRIES.forEach(function(c){const re=new RegExp('\\b'+escRe(c)+'\\b','g');let m;while((m=re.exec(text))!==null)ents.push({cat:'COUNTRY',text:m[0],start:m.index,end:m.index+m[0].length});});
+      Object.keys(NAT_MAP).forEach(function(n){const re=new RegExp('\\b'+escRe(n)+'\\b','g');let m;while((m=re.exec(text))!==null)ents.push({cat:'COUNTRY',text:m[0],start:m.index,end:m.index+m[0].length});});
+    }
+    // Locations
+    if(active.has('LOCATION')&&level!=='light'){const re=/\b(?:in|at|from|to|arrived in|fled from|left)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g;let m;while((m=re.exec(text))!==null&&m[1])ents.push({cat:'LOCATION',text:m[1],start:m.index+m[0].length-m[1].length,end:m.index+m[0].length});}
+    // Family terms
+    if(active.has('FAMILY_TERM')){const re=/\b(?:wife|husband|spouse|daughter|son|children|child|mother|father|brother|sister|grandfather|grandmother|nephew|niece|cousin|uncle|aunt|sibling)\b/gi;let m;while((m=re.exec(text))!==null)ents.push({cat:'FAMILY_TERM',text:m[0],start:m.index,end:m.index+m[0].length});}
+    // Person names
+    if(active.has('PERSON')){
+      const toks=[];const tr=/\S+/g;let tm;while((tm=tr.exec(text))!==null)toks.push({raw:tm[0],s:tm.index,e:tm.index+tm[0].length});
+      let i=0;
+      while(i<toks.length){
+        if(!isNameTok(toks[i].raw)&&!/^(?:Al|El|Abd|Abu|Bin|Bint|Ibn|Um|Ben)-/i.test(toks[i].raw)){i++;continue;}
+        let j=i;
+        while(j<toks.length&&j<i+5){const c=toks[j].raw.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g,'').toLowerCase();if(isNameTok(toks[j].raw)||PARTICLES.has(c))j++;else break;}
+        if(j>i+1&&isNameTok(toks[j-1].raw)){
+          const span=text.slice(toks[i].s,toks[j-1].e);
+          if(!LEGAL.has(span.trim())&&!/^[A-Z\s\-]+$/.test(span)&&!/^(?:The|This|An?)\s/.test(span)){
+            ents.push({cat:'PERSON',text:span,start:toks[i].s,end:toks[j-1].e});
+            i=j;continue;
+          }
+        }
+        i++;
+      }
+    }
+    // Dedupe
+    ents.sort(function(a,b){return a.start!==b.start?a.start-b.start:(b.end-b.start)-(a.end-a.start);});
+    const out=[];let last=-1;
+    ents.forEach(function(e){if(e.start>=last){out.push(e);last=e.end;}});
+    return out;
+  }
+  return {detectEntities:detectEntities};
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// PDF PROCESSOR
+// ══════════════════════════════════════════════════════════════════════════
+const EuaaPdfProcessor = (function() {
+  const SCALE = 2.5;
+
+  function findPdfOffset(bytes) {
+    const lim = Math.min(bytes.length,4096);
+    for(let i=0;i<lim-4;i++) if(bytes[i]===0x25&&bytes[i+1]===0x50&&bytes[i+2]===0x44&&bytes[i+3]===0x46&&bytes[i+4]===0x2D) return i;
+    return -1;
+  }
+
+  function blackBar(ctx,x,y,w,h,pad) {
+    ctx.fillStyle='#000';
+    ctx.fillRect(Math.floor(x-pad),Math.floor(y-pad),Math.ceil(w+pad*2),Math.ceil(h+pad*2));
+  }
+
+  function cloneCanvas(src) {
+    const dst=document.createElement('canvas');
+    dst.width=src.width;dst.height=src.height;
+    dst.getContext('2d').drawImage(src,0,0);
+    return dst;
+  }
+
+  function buildManualRegex(terms) {
+    if(!terms||!terms.length) return null;
+    return new RegExp(terms.map(function(t){return t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}).join('|'),'gi');
+  }
+
+  async function process(file, active, useOcr, padding, manTerms, onStatus) {
+    if(onStatus) onStatus('Loading "'+file.name+'"…',0);
+    const buffer = await file.arrayBuffer();
+    const bytes  = new Uint8Array(buffer);
+
+    // Validate
+    if(bytes.length===0) throw new Error('"'+file.name+'" is empty.');
+    const hdr = new TextDecoder('latin1').decode(bytes.slice(0,Math.min(256,bytes.length)));
+    if(/^\s*<!DOCTYPE|^\s*<html/i.test(hdr)) throw new Error('"'+file.name+'" is an HTML page, not a PDF.');
+    const offset = findPdfOffset(bytes);
+    if(offset<0) throw new Error('"'+file.name+'" has no PDF header — file may be corrupted.');
+    const buf = offset>0 ? bytes.slice(offset) : bytes;
+
+    // Load
+    let pdf;
+    try { pdf = await pdfjsLib.getDocument({data:buf,verbosity:0,stopAtErrors:false}).promise; }
+    catch(e) { throw new Error('"'+file.name+'" — PDF.js could not parse: '+e.message); }
+
+    const jsPDF   = window.jspdf.jsPDF;
+    const manRx   = buildManualRegex(manTerms);
+    const pad     = Math.max(0,padding)*SCALE;
+    let doc       = null;
+    let totalBars = 0;
+    const canvases= [];
+
+    for(let pi=0;pi<pdf.numPages;pi++) {
+      const pageNum = pi+1;
+      const pct     = Math.round((pi/pdf.numPages)*90);
+      if(onStatus) onStatus('Redacting page '+pageNum+'/'+pdf.numPages+'…',pct);
+
+      const pdfPage = await pdf.getPage(pageNum);
+      const vp      = pdfPage.getViewport({scale:SCALE});
+      const canvas  = document.createElement('canvas');
+      canvas.width  = Math.ceil(vp.width);
+      canvas.height = Math.ceil(vp.height);
+      const ctx     = canvas.getContext('2d',{willReadFrequently:true});
+      await pdfPage.render({canvasContext:ctx,viewport:vp}).promise;
+
+      const content = await pdfPage.getTextContent();
+      let pageHasText = false;
+
+      for(const item of content.items) {
+        const str=(item.str||'').trim();
+        if(!str) continue;
+        pageHasText=true;
+        const ents = active.size ? EuaaAnonymizer.detectEntities(str,'demo-safe',active) : [];
+        let needs = ents.length>0;
+        if(!needs&&manRx){manRx.lastIndex=0;needs=manRx.test(str);manRx.lastIndex=0;}
+        if(!needs) continue;
+        const t  = pdfjsLib.Util.transform(vp.transform,item.transform);
+        const cx = t[4]*SCALE;
+        const cy = t[5]*SCALE;
+        const cw = Math.max((item.width||str.length*6)*SCALE,20);
+        const ch = Math.max((item.height||Math.abs(t[3])||10)*SCALE,10);
+        blackBar(ctx,cx,cy-ch,cw,ch,pad);
+        totalBars++;
+      }
+
+      if(!pageHasText&&useOcr&&window.Tesseract) {
+        if(onStatus) onStatus('OCR page '+pageNum+'…',pct);
+        try {
+          const r = await window.Tesseract.recognize(canvas,'eng',{logger:function(){}});
+          if((r.data.text||'').trim().length>20) {
+            for(const word of (r.data.words||[])) {
+              const wt=(word.text||'').trim();
+              if(!wt) continue;
+              const ents=active.size?EuaaAnonymizer.detectEntities(wt,'demo-safe',active):[];
+              let needs=ents.length>0;
+              if(!needs&&manRx){manRx.lastIndex=0;needs=manRx.test(wt);manRx.lastIndex=0;}
+              if(!needs) continue;
+              const b=word.bbox||{};
+              blackBar(ctx,(b.x0||0)*SCALE,(b.y0||0)*SCALE,((b.x1||0)-(b.x0||0))*SCALE,((b.y1||0)-(b.y0||0))*SCALE,pad);
+              totalBars++;
+            }
+          }
+        } catch(e) { /* OCR failed, skip */ }
+      }
+
+      canvases.push(cloneCanvas(canvas));
+
+      const mmW = (canvas.width/SCALE)*(25.4/96);
+      const mmH = (canvas.height/SCALE)*(25.4/96);
+      const ori = mmW>mmH?'l':'p';
+      const img = canvas.toDataURL('image/jpeg',0.95);
+      if(!doc) doc=new jsPDF({orientation:ori,unit:'mm',format:[mmW,mmH],compress:true});
+      else     doc.addPage([mmW,mmH],ori);
+      doc.addImage(img,'JPEG',0,0,mmW,mmH);
+    }
+
+    if(!doc) throw new Error('"'+file.name+'" — no pages could be processed.');
+    if(onStatus) onStatus('Encoding PDF…',96);
+
+    const outBuf  = doc.output('arraybuffer');
+    const outName = file.name.replace(/\.pdf$/i,'')+'_REDACTED.pdf';
+    if(onStatus) onStatus('Done!',100);
+
+    return {
+      sourceName: file.name,
+      error:      false,
+      barCount:   totalBars,
+      canvases:   canvases,
+      downloads:  [{filename:outName,blob:new Blob([outBuf],{type:'application/pdf'})}]
+    };
+  }
+
+  return {process:process, SCALE:SCALE};
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// APP CONTROLLER — runs after window fully loads (all CDN libs ready)
+// ══════════════════════════════════════════════════════════════════════════
+window.addEventListener('load', function() {
+
+  // ── DOM refs ──────────────────────────────────────────────────────────
+  var processBtn     = document.getElementById('processBtn');
+  var downloadAllBtn = document.getElementById('downloadAllBtn');
+  var clearFilesBtn  = document.getElementById('clearFilesBtn');
+  var clearSessionBtn= document.getElementById('clearSessionBtn');
+  var progressWrap   = document.getElementById('progressWrap');
+  var progressFill   = document.getElementById('progressFill');
+  var progressLabel  = document.getElementById('progressLabel');
+  var statusBanner   = document.getElementById('statusBanner');
+  var statusText     = document.getElementById('statusText');
+  var resultsCard    = document.getElementById('results-card');
+  var resultsContainer = document.getElementById('resultsContainer');
+  var fileQueue      = document.getElementById('fileQueue');
+  var fileCount      = document.getElementById('fileCount');
+  var fileList       = document.getElementById('fileList');
+
+  var sessionResults = [];
+  window._redactFiles = window._redactFiles || [];
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function fmtSize(n){if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB';}
+
+  function setStatus(msg,type){
+    statusBanner.className='status-banner'+(type?' '+type:'');
+    statusText.textContent=msg;
+  }
+  function showProgress(pct,lbl){
+    progressWrap.style.display='';
+    progressFill.style.width=Math.min(100,Math.max(0,pct))+'%';
+    if(lbl!==undefined) progressLabel.textContent=lbl;
+  }
+  function hideProgress(){progressWrap.style.display='none';}
+
+  function refreshQueue(){
+    var files=window._redactFiles||[];
+    var n=files.length;
+    fileCount.textContent=n+' file'+(n===1?'':'s')+' queued';
+    fileList.innerHTML='';
+    files.forEach(function(f){
+      var li=document.createElement('li');
+      li.className='file-item';
+      li.innerHTML='<i class="fa-solid fa-file-pdf" style="color:#dc2626;flex-shrink:0"></i>'+
+        '<span class="file-item-name">'+esc(f.name)+'</span>'+
+        '<span class="file-item-size">'+fmtSize(f.size)+'</span>'+
+        '<span class="file-item-ext">pdf</span>';
+      fileList.appendChild(li);
+    });
+    fileQueue.style.display=n>0?'':'none';
+    processBtn.disabled=n===0;
+  }
+
+  function triggerDownload(blob,filename){
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=filename;a.style.display='none';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},90000);
+  }
+
+  // ── File upload wiring ────────────────────────────────────────────────
+  var fileInput=document.getElementById('fileInput');
+  fileInput.addEventListener('change',function(){
+    addFiles(Array.prototype.slice.call(this.files));
+    this.value='';
+  });
+
+  var dropZone=document.getElementById('dropZone');
+  document.addEventListener('dragover',function(e){e.preventDefault();});
+  document.addEventListener('drop',function(e){e.preventDefault();});
+  dropZone.addEventListener('dragenter',function(e){e.preventDefault();dropZone.classList.add('dragover');});
+  dropZone.addEventListener('dragover',function(e){e.preventDefault();dropZone.classList.add('dragover');});
+  dropZone.addEventListener('dragleave',function(e){if(!dropZone.contains(e.relatedTarget))dropZone.classList.remove('dragover');});
+  dropZone.addEventListener('drop',function(e){
+    e.preventDefault();e.stopPropagation();dropZone.classList.remove('dragover');
+    var dt=e.dataTransfer;
+    if(dt&&dt.files) addFiles(Array.prototype.slice.call(dt.files));
+  });
+
+  function addFiles(raw){
+    var seen=new Set((window._redactFiles||[]).map(function(f){return f.name;}));
+    raw.forEach(function(f){
+      var name=f.webkitRelativePath||f.name||'';
+      var ext=(name.split('.').pop()||'').toLowerCase();
+      if(ext!=='pdf'||seen.has(name)) return;
+      window._redactFiles.push({file:f,name:name,size:f.size});
+      seen.add(name);
+    });
+    refreshQueue();
+    if(window._redactFiles.length>0) setStatus(window._redactFiles.length+' PDF(s) ready.','info');
+  }
+
+  // ── Clear buttons ─────────────────────────────────────────────────────
+  clearFilesBtn.addEventListener('click',function(){
+    window._redactFiles=[];
+    refreshQueue();
+    setStatus('File list cleared.','');
+  });
+
+  clearSessionBtn.addEventListener('click',function(){
+    window._redactFiles=[];
+    sessionResults=[];
+    refreshQueue();
+    resultsContainer.innerHTML='';
+    resultsCard.style.display='none';
+    downloadAllBtn.disabled=true;
+    hideProgress();
+    setStatus('Session cleared.','');
+  });
+
+  // ── PROCESS ───────────────────────────────────────────────────────────
+  processBtn.addEventListener('click',function(){
+    var files=window._redactFiles||[];
+    if(!files.length){setStatus('Add PDF files first.','warn');return;}
+
+    // Collect settings
+    var active=new Set();
+    document.querySelectorAll('.entity-toggle').forEach(function(t){if(t.checked)active.add(t.value);});
+    var padding=parseInt(document.getElementById('barPadding').value,10)||4;
+    var terms=[];
+    var mt=document.getElementById('manualTerms').value.trim();
+    if(mt) terms=mt.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+    var useOcr=document.getElementById('ocrToggle').checked;
+
+    // Reset UI
+    sessionResults=[];
+    resultsContainer.innerHTML='';
+    resultsCard.style.display='';
+    processBtn.disabled=true;
+    downloadAllBtn.disabled=true;
+    showProgress(0,'Starting…');
+    setStatus('Applying redaction…','info');
+
+    var total=files.length;
+    var idx=0;
+
+    function next(){
+      if(idx>=total){
+        showProgress(100,'Complete');
+        setTimeout(hideProgress,1000);
+        processBtn.disabled=false;
+        var ok=sessionResults.filter(function(r){return!r.error;}).length;
+        var bad=sessionResults.filter(function(r){return r.error;}).length;
+        downloadAllBtn.disabled=ok===0;
+        setStatus(bad?'✅ '+ok+' done · ⚠️ '+bad+' error(s)':'✅ '+ok+' file(s) redacted. Click Download to save.',bad?'warn':'success');
+        return;
+      }
+      var entry=files[idx];
+      var myIdx=idx;
+      showProgress((myIdx/total)*100,'('+(myIdx+1)+'/'+total+') '+entry.name);
+
+      EuaaPdfProcessor.process(
+        entry.file, active, useOcr, padding, terms,
+        function(msg,pct){
+          var base=(myIdx/total)*100, slice=(1/total)*100;
+          showProgress(base+slice*((pct||50)/100),msg);
+        }
+      ).then(function(result){
+        sessionResults.push(result);
+        showProgress(((myIdx+1)/total)*100,'Done '+(myIdx+1)+'/'+total);
+        renderCard(result);
+        idx++;next();
+      }).catch(function(err){
+        console.error(err);
+        sessionResults.push({sourceName:entry.name,error:true,message:String(err&&err.message?err.message:err),downloads:[],canvases:[]});
+        renderCard(sessionResults[sessionResults.length-1]);
+        idx++;next();
+      });
+    }
+    next();
+  });
+
+  // ── Result card ───────────────────────────────────────────────────────
+  function renderCard(result){
+    var card=document.createElement('article');
+    card.className='result-card';
+    card.dataset.sourceName=result.sourceName;
+    if(result.error){
+      card.innerHTML=
+        '<div class="result-head"><h3>'+esc(result.sourceName)+'</h3>'+
+        '<span class="badge-redacted" style="background:#dc2626">&#10060; Error</span></div>'+
+        '<div style="padding:.85rem 1rem;font-size:.83rem;color:#dc2626;background:#fee2e2;font-family:monospace;white-space:pre-wrap">'+
+        esc(result.message)+'</div>';
+    } else {
+      card.innerHTML=
+        '<div class="result-head"><h3>'+esc(result.sourceName)+'</h3>'+
+        '<span class="result-meta">'+(result.barCount||0)+' bar(s) applied</span>'+
+        '<span class="badge-redacted">&#9632; Redacted</span></div>'+
+        '<div class="result-dl">'+
+        '<button class="dl-btn dl-btn-blue btn-review" type="button"><i class="fa-solid fa-pen-to-square"></i> Review &amp; add bars</button>'+
+        '<button class="dl-btn dl-btn-dark btn-dl" type="button"><i class="fa-solid fa-download"></i> Download PDF</button>'+
+        '</div>';
+      var res=result;
+      card.querySelector('.btn-dl').addEventListener('click',function(){
+        if(!res.downloads||!res.downloads.length){setStatus('No download available.','error');return;}
+        triggerDownload(res.downloads[0].blob,res.downloads[0].filename);
+      });
+      card.querySelector('.btn-review').addEventListener('click',function(){openReviewModal(res);});
+    }
+    resultsContainer.appendChild(card);
+    card.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  // ── Download all ZIP ──────────────────────────────────────────────────
+  downloadAllBtn.addEventListener('click',function(){
+    if(!sessionResults.length) return;
+    downloadAllBtn.disabled=true;
+    downloadAllBtn.innerHTML='<span class="spinner"></span> Zipping…';
+    var zip=new JSZip();
+    sessionResults.forEach(function(r){r.downloads.forEach(function(dl){zip.file(dl.filename,dl.blob);});});
+    zip.generateAsync({type:'blob',compression:'DEFLATE'}).then(function(blob){
+      triggerDownload(blob,'redacted-'+new Date().toISOString().slice(0,10)+'.zip');
+      setStatus('✅ ZIP download started.','success');
+      downloadAllBtn.disabled=false;
+      downloadAllBtn.innerHTML='<i class="fa-solid fa-download"></i> Download all (ZIP)';
+    }).catch(function(e){
+      setStatus('ZIP error: '+e.message,'error');
+      downloadAllBtn.disabled=false;
+      downloadAllBtn.innerHTML='<i class="fa-solid fa-download"></i> Download all (ZIP)';
+    });
+  });
+
+  // ── REVIEW MODAL ──────────────────────────────────────────────────────
+  var modal={result:null,canvases:[],origCvs:[],page:0,drawing:false,sx:0,sy:0,scale:1};
+
+  function openReviewModal(result){
+    if(!result.canvases||!result.canvases.length){setStatus('No page previews available.','warn');return;}
+    modal.result=result; modal.page=0; modal.drawing=false;
+    modal.origCvs=result.canvases;
+    modal.canvases=result.canvases.map(function(src){
+      var dst=document.createElement('canvas');
+      dst.width=src.width;dst.height=src.height;
+      dst.getContext('2d').drawImage(src,0,0);
+      return {canvas:dst,bars:[]};
+    });
+    var el=document.getElementById('reviewModal');
+    el.style.display='flex';el.classList.add('open');
+    renderModalPage();updateModalNav();
+  }
+
+  function closeReviewModal(){
+    var el=document.getElementById('reviewModal');
+    el.style.display='none';el.classList.remove('open');
+    modal.result=null;modal.canvases=[];modal.origCvs=[];
+  }
+
+  function renderModalPage(){
+    var container=document.getElementById('modalCanvasContainer');
+    container.innerHTML='';
+    var pg=modal.canvases[modal.page];
+    if(!pg) return;
+    var src=pg.canvas;
+    var maxW=Math.max(container.clientWidth-40,400);
+    var maxH=Math.max(window.innerHeight-240,300);
+    var scale=Math.min(maxW/src.width,maxH/src.height,1);
+    modal.scale=scale;
+    var wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;display:inline-block;user-select:none';
+    var disp=document.createElement('canvas');
+    disp.width=Math.floor(src.width*scale);disp.height=Math.floor(src.height*scale);
+    disp.style.cssText='display:block;cursor:crosshair;touch-action:none;border-radius:4px;box-shadow:0 0 0 2px #374151,0 8px 32px rgba(0,0,0,.5)';
+    var dCtx=disp.getContext('2d');
+    dCtx.drawImage(src,0,0,disp.width,disp.height);
+    var ovl=document.createElement('canvas');
+    ovl.width=disp.width;ovl.height=disp.height;
+    ovl.style.cssText='position:absolute;top:0;left:0;pointer-events:none';
+    var oCtx=ovl.getContext('2d');
+    wrap.appendChild(disp);wrap.appendChild(ovl);container.appendChild(wrap);
+    function getPos(e){var r=disp.getBoundingClientRect();var cx=e.touches?e.touches[0].clientX:e.clientX;var cy=e.touches?e.touches[0].clientY:e.clientY;return{x:(cx-r.left)/scale,y:(cy-r.top)/scale};}
+    function thick(){var el=document.getElementById('modalBarThickness');return el?parseInt(el.value,10):16;}
+    disp.addEventListener('mousedown',function(e){e.preventDefault();modal.drawing=true;var p=getPos(e);modal.sx=p.x;modal.sy=p.y;});
+    disp.addEventListener('mousemove',function(e){if(!modal.drawing)return;var p=getPos(e);var x=Math.min(modal.sx,p.x),y=Math.min(modal.sy,p.y),w=Math.abs(p.x-modal.sx),h=Math.max(Math.abs(p.y-modal.sy),thick());oCtx.clearRect(0,0,ovl.width,ovl.height);oCtx.fillStyle='rgba(0,0,0,.85)';oCtx.fillRect(x*scale,y*scale,w*scale,h*scale);});
+    function endDraw(e){if(!modal.drawing)return;modal.drawing=false;oCtx.clearRect(0,0,ovl.width,ovl.height);var p=getPos(e);var x=Math.min(modal.sx,p.x),y=Math.min(modal.sy,p.y),w=Math.abs(p.x-modal.sx),h=Math.max(Math.abs(p.y-modal.sy),thick());if(w<2)return;pg.bars.push({x:x,y:y,w:w,h:h});src.getContext('2d').fillStyle='#000';src.getContext('2d').fillRect(Math.floor(x),Math.floor(y),Math.ceil(w),Math.ceil(h));dCtx.drawImage(src,0,0,disp.width,disp.height);}
+    disp.addEventListener('mouseup',endDraw);
+    disp.addEventListener('mouseleave',endDraw);
+    document.getElementById('modalPageInfo').textContent='Page '+(modal.page+1)+' of '+modal.canvases.length;
+  }
+
+  function updateModalNav(){
+    document.getElementById('modalPrevBtn').disabled=modal.page===0;
+    document.getElementById('modalNextBtn').disabled=modal.page>=modal.canvases.length-1;
+    document.getElementById('modalPageInfo').textContent='Page '+(modal.page+1)+' of '+modal.canvases.length;
+  }
+
+  document.getElementById('modalPrevBtn').addEventListener('click',function(){if(modal.page>0){modal.page--;renderModalPage();updateModalNav();}});
+  document.getElementById('modalNextBtn').addEventListener('click',function(){if(modal.page<modal.canvases.length-1){modal.page++;renderModalPage();updateModalNav();}});
+  document.getElementById('modalCloseBtn').addEventListener('click',closeReviewModal);
+  document.getElementById('modalCancelBtn').addEventListener('click',closeReviewModal);
+  document.getElementById('reviewModal').addEventListener('click',function(e){if(e.target===this)closeReviewModal();});
+
+  document.getElementById('modalUndoBtn').addEventListener('click',function(){
+    var pg=modal.canvases[modal.page];
+    if(!pg||!pg.bars.length) return;
+    pg.bars.pop();
+    var orig=modal.origCvs[modal.page];
+    var dst=pg.canvas;var ctx=dst.getContext('2d');
+    ctx.clearRect(0,0,dst.width,dst.height);ctx.drawImage(orig,0,0);
+    ctx.fillStyle='#000';
+    pg.bars.forEach(function(b){ctx.fillRect(Math.floor(b.x),Math.floor(b.y),Math.ceil(b.w),Math.ceil(b.h));});
+    renderModalPage();updateModalNav();
+  });
+
+  document.getElementById('modalDownloadBtn').addEventListener('click',function(){
+    if(!modal.result||!modal.canvases.length) return;
+    var btn=document.getElementById('modalDownloadBtn');
+    btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Building…';
+    var SCALE=EuaaPdfProcessor.SCALE||2.5;
+    var jsPDF=window.jspdf.jsPDF;
+    var doc=null;
+    var total=(modal.result.barCount||0);
+    modal.canvases.forEach(function(pg){total+=pg.bars.length;});
+    try {
+      for(var i=0;i<modal.canvases.length;i++){
+        var canvas=modal.canvases[i].canvas;
+        var mmW=(canvas.width/SCALE)*(25.4/96);
+        var mmH=(canvas.height/SCALE)*(25.4/96);
+        var ori=mmW>mmH?'l':'p';
+        var img=canvas.toDataURL('image/jpeg',0.95);
+        if(!doc) doc=new jsPDF({orientation:ori,unit:'mm',format:[mmW,mmH],compress:true});
+        else doc.addPage([mmW,mmH],ori);
+        doc.addImage(img,'JPEG',0,0,mmW,mmH);
+      }
+      var outBuf=doc.output('arraybuffer');
+      var outName=(modal.result.sourceName||'document').replace(/\.pdf$/i,'')+'_REDACTED.pdf';
+      var blob=new Blob([outBuf],{type:'application/pdf'});
+      modal.result.downloads=[{filename:outName,blob:blob}];
+      modal.result.barCount=total;
+      document.querySelectorAll('.result-card').forEach(function(c){if(c.dataset.sourceName===modal.result.sourceName){var m=c.querySelector('.result-meta');if(m)m.textContent=total+' bar(s) applied';}});
+      triggerDownload(blob,outName);
+      closeReviewModal();
+      setStatus('✅ Downloaded: '+outName,'success');
+    } catch(err){setStatus('PDF error: '+err.message,'error');console.error(err);}
+    btn.disabled=false;btn.innerHTML='<i class="fa-solid fa-download"></i> Finalise &amp; download';
+  });
+
+  document.getElementById('modalBarThickness').addEventListener('input',function(){document.getElementById('modalBarThicknessVal').textContent=this.value+' px';});
+
+  // ── Bar padding preview ────────────────────────────────────────────────
+  var padSlider=document.getElementById('barPadding');
+  var padVal=document.getElementById('barPaddingVal');
+  var padPreview=document.getElementById('barPreview');
+  function updatePad(){var v=parseInt(padSlider.value,10);padVal.textContent=v+' px';padPreview.style.height=(10+v*2)+'px';}
+  padSlider.addEventListener('input',updatePad);
+  updatePad();
+
+  // ── Manual terms chips ─────────────────────────────────────────────────
+  var ta=document.getElementById('manualTerms');
+  var chipRow=document.getElementById('termChips');
+  function updateChips(){
+    var vals=ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+    chipRow.innerHTML='';
+    vals.forEach(function(v){
+      var chip=document.createElement('span');chip.className='chip';
+      var lbl=document.createTextNode(v);
+      var del=document.createElement('button');del.className='chip-del';del.textContent='×';
+      del.addEventListener('click',function(){ta.value=ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0&&s!==v;}).join('\n');updateChips();});
+      chip.appendChild(lbl);chip.appendChild(del);chipRow.appendChild(chip);
+    });
+  }
+  ta.addEventListener('input',updateChips);
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  refreshQueue();
+  setStatus('Upload PDF files above to get started.','info');
+  hideProgress();
+});
 </script>
-<script src="js/anonymizer.js"></script>
-<script src="js/pdf-processor.js"></script>
-<script src="js/app.js"></script>
 <script src="https://www.genspark.ai/sandbox_inspect.js"></script></body>
 </html>

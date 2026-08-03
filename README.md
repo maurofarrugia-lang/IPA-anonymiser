@@ -26,15 +26,18 @@ All processing happens entirely in the browser — no files or data ever leave y
 ## 📁 File Structure
 
 ```
-index.html              Main UI
-js/app.js               App controller (upload, process, review modal, download)
-js/pdf-processor.js     PDF rendering + black-bar engine (PDF.js → canvas → jsPDF)
-js/anonymizer.js        NER entity detection (used for auto-detect categories)
-js/docx-processor.js    (legacy, not used)
-css/style.css           (legacy, CSS now inlined in index.html)
-download.html           ZIP downloader for distributing project files
-.nojekyll               Disables Jekyll on GitHub Pages
+index.html    ⭐ COMPLETE self-contained app — ALL JS inlined, zero external dependencies
+.nojekyll     Disables Jekyll on GitHub Pages
+404.html      404 redirect page
+get.html      ZIP downloader — download index.html and other files for GitHub upload
+README.md     This file
+PRIVACY.md    Privacy statement
+SECURITY.md   Security policy
 ```
+
+> **Architecture note:** The entire application (EuaaAnonymizer, EuaaPdfProcessor, and the app controller)
+> is inlined directly into `index.html`. There are no separate JS files to load. This eliminates all
+> browser caching issues that previously caused "nothing happens" bugs.
 
 ---
 
@@ -49,6 +52,9 @@ download.html           ZIP downloader for distributing project files
 7. The rendered canvases are stored so the manual review modal can display and modify them
 8. OCR via **Tesseract.js** handles pages with no extractable text
 
+All app code runs inside `window.addEventListener('load', ...)` to guarantee all CDN libraries
+(PDF.js, JSZip, jsPDF, Tesseract.js) are fully loaded before any button wiring runs.
+
 ---
 
 ## 🚀 Deployment
@@ -56,7 +62,7 @@ download.html           ZIP downloader for distributing project files
 Push all files to GitHub and enable GitHub Pages (branch: `main`, folder: `/root`).  
 The `.nojekyll` file disables Jekyll processing.
 
-To download a ZIP of all current files: open `download.html`.
+**To download the latest files:** open `get.html` in the browser and click **Download All Files as ZIP**.
 
 ---
 
@@ -69,3 +75,4 @@ To download a ZIP of all current files: open `download.html`.
 | Scanned PDF not redacted | Enable OCR toggle |
 | Download button does nothing | Ensure browser allows blob URL downloads (disable aggressive ad-blockers) |
 | Processing very slow | OCR on large scanned PDFs takes time — disable OCR if not needed |
+| Changes not appearing on live site | You need to push updated files to GitHub. Old files may be cached. |
