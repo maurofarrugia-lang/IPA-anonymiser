@@ -1,373 +1,633 @@
-/**
- * EUAA Personal Data Extraction & Document Intelligence Engine
- * ─────────────────────────────────────────────────────────────────────────────
- * Extracts and validates personal data from OCR text:
- *   - Full names, aliases, DOB, POB, nationality
- *   - Passport / ID / case numbers
- *   - Document type classification
- *   - Confidence scoring per field
- *   - Contextual validation & error flagging
- */
-const EuaaDataExtractor = (function () {
+/* EUAA Enhanced App Controller */
+window.addEventListener('load', function () {
   'use strict';
 
-  // ── Document type signatures ───────────────────────────────────────────────
-  var DOC_TYPES = [
-    {
-      id: 'PASSPORT',
-      label: 'Passport',
-      icon: '🛂',
-      keywords: ['passport','جواز','passeport','pasaporte','reisepass','paspoort'],
-      mrz: true,
-    },
-    {
-      id: 'NATIONAL_ID',
-      label: 'National Identity Card',
-      icon: '🪪',
-      keywords: ['identity card','national id','carte nationale','personalausweis','هوية','بطاقة'],
-    },
-    {
-      id: 'BIRTH_CERT',
-      label: 'Birth Certificate',
-      icon: '📜',
-      keywords: ['birth certificate','certificate of birth','شهادة ميلاد','extrait de naissance','geburtsurkunde'],
-    },
-    {
-      id: 'MARRIAGE_CERT',
-      label: 'Marriage Certificate',
-      icon: '💒',
-      keywords: ['marriage certificate','عقد زواج','acte de mariage','heiratsurkunde'],
-    },
-    {
-      id: 'ASYLUM_APPLICATION',
-      label: 'Asylum Application',
-      icon: '📋',
-      keywords: ['asylum application','application for international protection','refugee status','international protection','طلب اللجوء','demande d\'asile'],
-    },
-    {
-      id: 'INTERVIEW_RECORD',
-      label: 'Interview Record',
-      icon: '🗣',
-      keywords: ['interview record','substantive interview','personal interview','interview transcript','hearing record'],
-    },
-    {
-      id: 'COURT_DECISION',
-      label: 'Court / Tribunal Decision',
-      icon: '⚖️',
-      keywords: ['tribunal','court decision','appeal decision','judgment','ruling','decision of the','international protection appeals'],
-    },
-    {
-      id: 'POLICE_REPORT',
-      label: 'Police / Security Report',
-      icon: '🚔',
-      keywords: ['police report','garda','constabulary','تقرير الشرطة','rapport de police','security report'],
-    },
-    {
-      id: 'MEDICAL_REPORT',
-      label: 'Medical Report',
-      icon: '🏥',
-      keywords: ['medical report','clinical report','health assessment','psychological assessment','psychiatric assessment','médical'],
-    },
-    {
-      id: 'TRAVEL_DOC',
-      label: 'Travel Document',
-      icon: '✈️',
-      keywords: ['travel document','laissez-passer','emergency travel','convention travel'],
-    },
-    {
-      id: 'REGISTRATION',
-      label: 'Registration Form',
-      icon: '📝',
-      keywords: ['registration form','registration card','eurodac','دبلن','dublin regulation'],
-    },
-    {
-      id: 'UNKNOWN',
-      label: 'Unknown Document',
-      icon: '📄',
-      keywords: [],
-    },
-  ];
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  var processBtn      = document.getElementById('processBtn');
+  var downloadAllBtn  = document.getElementById('downloadAllBtn');
+  var clearFilesBtn   = document.getElementById('clearFilesBtn');
+  var clearSessionBtn = document.getElementById('clearSessionBtn');
+  var progressWrap    = document.getElementById('progressWrap');
+  var progressFill    = document.getElementById('progressFill');
+  var progressLabel   = document.getElementById('progressLabel');
+  var statusBanner    = document.getElementById('statusBanner');
+  var statusText      = document.getElementById('statusText');
+  var resultsCard     = document.getElementById('results-card');
+  var resultsContainer= document.getElementById('resultsContainer');
+  var fileQueue       = document.getElementById('fileQueue');
+  var fileCount       = document.getElementById('fileCount');
+  var fileList        = document.getElementById('fileList');
+  var summaryCard     = document.getElementById('summary-card');
+  var summaryGrid     = document.getElementById('summaryGrid');
 
-  // ── Regex patterns for personal data ──────────────────────────────────────
-  var MONTHS_EN = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
-  var MONTHS_FR = 'janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre';
+  var sessionResults  = [];
+  window._redactFiles = window._redactFiles || [];
 
-  var PATTERNS = {
-    // Passport / travel document number: 1–2 letters + 6–9 digits
-    PASSPORT_NO: /\b([A-Z]{1,2}\d{6,9}|[A-Z0-9]{9})\b/g,
-    // National ID card numbers (flexible)
-    NATIONAL_ID_NO: /\b([A-Z]{0,3}\s?-?\s?\d{5,12}[A-Z]?)\b/g,
-    // Refcom / case numbers
-    CASE_ID: /\b(?:Refcom|Case|Ref|File|Application|IPAT|INIS|ORAC|IPO)\s*(?:No\.?|Number|#|:)?\s*[:\-]?\s*([A-Z0-9\/\-]{4,20})\b/gi,
-    // DOB patterns — multiple formats
-    DOB_LONG_EN:  new RegExp('\\b(\\d{1,2}(?:st|nd|rd|th)?\\s+(?:' + MONTHS_EN + ')\\s+\\d{4})\\b', 'gi'),
-    DOB_LONG_FR:  new RegExp('\\b(\\d{1,2}\\s+(?:' + MONTHS_FR + ')\\s+\\d{4})\\b', 'gi'),
-    DOB_SHORT:    /\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/g,
-    DOB_ISO:      /\b(\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/g,
-    // Nationalities
-    // Email addresses
-    EMAIL:        /\b([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})\b/g,
-    // Phone numbers
-    PHONE:        /(?:\+|00)\d[\d\s().\-]{6,}\d|\b\d{3,4}[\s.\-]\d{3,4}[\s.\-]\d{3,4}\b/g,
-    // MRZ line detection
-    MRZ:          /[A-Z0-9<]{30,44}/g,
-    // Place of birth (contextual)
-    POB:          /\b(?:born\s+in|place\s+of\s+birth\s*[:=]|birthplace\s*[:=]|né\s+à|née\s+à)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/gi,
-  };
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtSize(n) { if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(1)+' MB'; }
 
-  // ── Nationality list ───────────────────────────────────────────────────────
-  var NATIONALITIES = {
-    'Afghan':'Afghanistan','Albanian':'Albania','Algerian':'Algeria','Armenian':'Armenia',
-    'Azerbaijani':'Azerbaijan','Bangladeshi':'Bangladesh','Belarusian':'Belarus',
-    'Bosnian':'Bosnia','Bulgarian':'Bulgaria','Cameroonian':'Cameroon','Chadian':'Chad',
-    'Colombian':'Colombia','Croatian':'Croatia','Cypriot':'Cyprus','Congolese':'DRC',
-    'Egyptian':'Egypt','Eritrean':'Eritrea','Ethiopian':'Ethiopia','French':'France',
-    'Gambian':'Gambia','Georgian':'Georgia','German':'Germany','Ghanaian':'Ghana',
-    'Greek':'Greece','Guinean':'Guinea','Hungarian':'Hungary','Indian':'India',
-    'Iranian':'Iran','Iraqi':'Iraq','Israeli':'Israel','Italian':'Italy',
-    'Jordanian':'Jordan','Kosovar':'Kosovo','Lebanese':'Lebanon','Libyan':'Libya',
-    'Malian':'Mali','Maltese':'Malta','Moroccan':'Morocco','Nepalese':'Nepal',
-    'Nepali':'Nepal','Dutch':'Netherlands','Nigerian':'Nigeria','Pakistani':'Pakistan',
-    'Palestinian':'Palestine','Polish':'Poland','Romanian':'Romania','Russian':'Russia',
-    'Serbian':'Serbia','Somali':'Somalia','Spanish':'Spain','Sri Lankan':'Sri Lanka',
-    'Sudanese':'Sudan','Syrian':'Syria','Turkish':'Turkey','Ugandan':'Uganda',
-    'Ukrainian':'Ukraine','Vietnamese':'Vietnam','Yemeni':'Yemen','Zimbabwean':'Zimbabwe',
-    'Rwandan':'Rwanda','Burundian':'Burundi','Kenyan':'Kenya','Tanzanian':'Tanzania',
-    'Congolese':'Congo','Ivorian':'Ivory Coast','Senegalese':'Senegal','Guinean':'Guinea',
-    'Sierra Leonean':'Sierra Leone','Liberian':'Liberia','Mauritanian':'Mauritania',
-    'Malawian':'Malawi','Mozambican':'Mozambique','Zimbabwean':'Zimbabwe',
-  };
+  function setStatus(msg, type) {
+    statusBanner.className = 'status-banner' + (type ? ' '+type : '');
+    statusText.textContent = msg;
+  }
+  function showProgress(pct, lbl) {
+    progressWrap.style.display = '';
+    progressFill.style.width = Math.min(100, Math.max(0, pct)) + '%';
+    if (lbl !== undefined) progressLabel.textContent = lbl;
+  }
+  function hideProgress() { progressWrap.style.display = 'none'; }
 
-  // ── MRZ parser ────────────────────────────────────────────────────────────
-  function parseMRZ(lines) {
-    // ICAO MRZ: passport type 1 (3 lines, 30 chars) or type 3 (2 lines, 44 chars)
-    var mrzLines = lines.filter(function (l) { return /^[A-Z0-9<]{29,44}$/.test(l.replace(/\s/g,'')); });
-    if (mrzLines.length < 2) return null;
-    // Normalise < to space
-    var L1 = mrzLines[0].replace(/\s/g,'').padEnd(44,'<');
-    var L2 = mrzLines[1].replace(/\s/g,'').padEnd(44,'<');
-    // Type P passport (2 lines × 44)
-    if (L1[0] === 'P') {
-      var surname_given = L1.slice(5).split('<<');
-      var surname = (surname_given[0] || '').replace(/</g,' ').trim();
-      var given   = (surname_given[1] || '').replace(/</g,' ').trim();
-      var passNo  = L2.slice(0,9).replace(/</g,'').trim();
-      var nation  = L2.slice(10,13).replace(/</g,'').trim();
-      var dobRaw  = L2.slice(13,19);
-      var dob     = parseMRZDate(dobRaw);
-      return {
-        surname: surname, givenNames: given, passportNo: passNo,
-        nationality: nation, dob: dob, source: 'MRZ', confidence: 92,
-      };
-    }
-    return null;
+  function confClass(c) { return c >= 80 ? 'conf-high' : c >= 55 ? 'conf-med' : 'conf-low'; }
+  function confLabel(c) { return Math.round(c) + '%'; }
+
+  function triggerDownload(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 90000);
   }
 
-  function parseMRZDate(s) {
-    // YYMMDD
-    if (!/^\d{6}$/.test(s)) return null;
-    var yy = parseInt(s.slice(0,2), 10);
-    var mm = parseInt(s.slice(2,4), 10);
-    var dd = parseInt(s.slice(4,6), 10);
-    var year = yy > 30 ? 1900 + yy : 2000 + yy;
-    return year + '-' + String(mm).padStart(2,'0') + '-' + String(dd).padStart(2,'0');
-  }
-
-  // ── Field extraction ───────────────────────────────────────────────────────
-  function extractAll(text, words) {
-    var fields = {};
-
-    // Passport numbers
-    var passNos = [];
-    var m; var re;
-    re = new RegExp(PATTERNS.PASSPORT_NO.source, 'g');
-    while ((m = re.exec(text)) !== null) passNos.push({ value: m[1]||m[0], confidence: 85, source: 'regex' });
-    if (passNos.length) fields.passportNumbers = dedupe(passNos);
-
-    // Case / reference numbers
-    var caseNos = [];
-    re = new RegExp(PATTERNS.CASE_ID.source, 'gi');
-    while ((m = re.exec(text)) !== null) caseNos.push({ value: m[0], confidence: 90, source: 'regex' });
-    if (caseNos.length) fields.caseNumbers = dedupe(caseNos);
-
-    // Dates of birth
-    var dobs = [];
-    [PATTERNS.DOB_LONG_EN, PATTERNS.DOB_LONG_FR, PATTERNS.DOB_SHORT, PATTERNS.DOB_ISO].forEach(function (p) {
-      re = new RegExp(p.source, p.flags || 'gi');
-      while ((m = re.exec(text)) !== null) {
-        var raw = m[1] || m[0];
-        var validated = validateDate(raw);
-        if (validated) dobs.push({ value: raw, normalised: validated, confidence: 82, source: 'regex' });
-      }
+  // ── File queue ─────────────────────────────────────────────────────────────
+  function refreshQueue() {
+    var files = window._redactFiles || [];
+    var n = files.length;
+    fileCount.textContent = n + ' file' + (n === 1 ? '' : 's') + ' queued';
+    fileList.innerHTML = '';
+    files.forEach(function (f) {
+      var li = document.createElement('li');
+      li.className = 'file-item';
+      li.innerHTML = '<i class="fa-solid fa-file-pdf" style="color:#dc2626;flex-shrink:0"></i>' +
+        '<span class="file-item-name">' + esc(f.name) + '</span>' +
+        '<span class="file-item-size">' + fmtSize(f.size) + '</span>';
+      fileList.appendChild(li);
     });
-    if (dobs.length) fields.datesOfBirth = dedupe(dobs);
-
-    // Place of birth
-    var pobs = [];
-    re = new RegExp(PATTERNS.POB.source, 'gi');
-    while ((m = re.exec(text)) !== null) pobs.push({ value: m[1], confidence: 75, source: 'regex' });
-    if (pobs.length) fields.placesOfBirth = dedupe(pobs);
-
-    // Nationalities
-    var nats = [];
-    Object.keys(NATIONALITIES).forEach(function (nat) {
-      var r = new RegExp('\\b' + escRe(nat) + '\\b', 'gi');
-      while ((m = r.exec(text)) !== null) {
-        nats.push({ value: nat, country: NATIONALITIES[nat], confidence: 88, source: 'regex' });
-      }
-    });
-    // Also check for country names used as nationality
-    if (nats.length) fields.nationalities = dedupe(nats, 'value');
-
-    // Emails
-    var emails = [];
-    re = new RegExp(PATTERNS.EMAIL.source, 'g');
-    while ((m = re.exec(text)) !== null) emails.push({ value: m[1]||m[0], confidence: 97, source: 'regex' });
-    if (emails.length) fields.emails = dedupe(emails);
-
-    // Phones
-    var phones = [];
-    re = new RegExp(PATTERNS.PHONE.source, 'g');
-    while ((m = re.exec(text)) !== null) phones.push({ value: m[0].trim(), confidence: 80, source: 'regex' });
-    if (phones.length) fields.phones = dedupe(phones);
-
-    // MRZ lines
-    var mrzLines = [];
-    re = new RegExp(PATTERNS.MRZ.source, 'g');
-    while ((m = re.exec(text)) !== null) mrzLines.push(m[0]);
-    var mrzResult = parseMRZ(mrzLines);
-    if (mrzResult) fields.mrz = mrzResult;
-
-    return fields;
+    fileQueue.style.display = n > 0 ? '' : 'none';
+    processBtn.disabled = n === 0;
   }
 
-  // ── Document type classification ───────────────────────────────────────────
-  function classifyDocument(text) {
-    if (!text) return DOC_TYPES[DOC_TYPES.length - 1]; // UNKNOWN
-    var lower = text.toLowerCase();
-    var scores = DOC_TYPES.map(function (dt) {
-      var score = 0;
-      dt.keywords.forEach(function (kw) {
-        if (lower.includes(kw.toLowerCase())) score += 1;
+  function addFiles(raw) {
+    var seen = new Set((window._redactFiles || []).map(function (f) { return f.name; }));
+    raw.forEach(function (f) {
+      var name = f.webkitRelativePath || f.name || '';
+      var ext = (name.split('.').pop() || '').toLowerCase();
+      if (ext !== 'pdf' || seen.has(name)) return;
+      window._redactFiles.push({ file: f, name: name, size: f.size });
+      seen.add(name);
+    });
+    refreshQueue();
+    if (window._redactFiles.length > 0) setStatus(window._redactFiles.length + ' PDF(s) ready. Configure settings then click Apply.', 'info');
+  }
+
+  // ── Upload wiring ──────────────────────────────────────────────────────────
+  var fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', function () { addFiles(Array.prototype.slice.call(this.files)); this.value = ''; });
+
+  var dropZone = document.getElementById('dropZone');
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop',     function (e) { e.preventDefault(); });
+  dropZone.addEventListener('dragenter', function (e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragover',  function (e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', function (e) { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('dragover'); });
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dragover');
+    var dt = e.dataTransfer;
+    if (dt && dt.files) addFiles(Array.prototype.slice.call(dt.files));
+  });
+
+  // ── Clear buttons ──────────────────────────────────────────────────────────
+  clearFilesBtn.addEventListener('click', function () { window._redactFiles = []; refreshQueue(); setStatus('File list cleared.', ''); });
+  clearSessionBtn.addEventListener('click', function () {
+    window._redactFiles = []; sessionResults = [];
+    refreshQueue(); resultsContainer.innerHTML = '';
+    resultsCard.style.display = 'none'; summaryCard.style.display = 'none';
+    downloadAllBtn.disabled = true; hideProgress();
+    setStatus('Session cleared.', '');
+  });
+
+  // ── Padding slider preview ─────────────────────────────────────────────────
+  var padSlider  = document.getElementById('barPadding');
+  var padVal     = document.getElementById('barPaddingVal');
+  var padPreview = document.getElementById('barPreview');
+  function updatePad() { var v = parseInt(padSlider.value,10); padVal.textContent = v+' px'; padPreview.style.height = (10+v*2)+'px'; }
+  padSlider.addEventListener('input', updatePad); updatePad();
+
+  // ── Manual terms chips ─────────────────────────────────────────────────────
+  var ta = document.getElementById('manualTerms');
+  var chipRow = document.getElementById('termChips');
+  function updateChips() {
+    var vals = ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+    chipRow.innerHTML = '';
+    vals.forEach(function (v) {
+      var chip = document.createElement('span'); chip.className = 'chip';
+      var lbl = document.createTextNode(v);
+      var del = document.createElement('button'); del.className = 'chip-del'; del.textContent = '×';
+      del.addEventListener('click', function () {
+        ta.value = ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0&&s!==v;}).join('\n');
+        updateChips();
       });
-      // MRZ lines strongly indicate passport/travel doc
-      if (dt.mrz && /[A-Z0-9<]{30,44}/.test(text)) score += 3;
-      return { type: dt, score: score };
+      chip.appendChild(lbl); chip.appendChild(del); chipRow.appendChild(chip);
     });
-    scores.sort(function (a, b) { return b.score - a.score; });
-    var best = scores[0];
-    return {
-      type: best.type,
-      confidence: best.score === 0 ? 0 : Math.min(95, 50 + best.score * 15),
-    };
   }
+  ta.addEventListener('input', updateChips);
 
-  // ── Validation helpers ─────────────────────────────────────────────────────
-  function validateDate(raw) {
-    if (!raw) return null;
-    // Try to parse to a Date object
-    var d = new Date(raw.replace(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/, function(_, d, m, y) {
-      if (y.length === 2) y = parseInt(y) > 30 ? '19'+y : '20'+y;
-      return y + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
-    }));
-    if (isNaN(d.getTime())) return null;
-    var year = d.getFullYear();
-    if (year < 1900 || year > new Date().getFullYear()) return null;
-    return d.toISOString().split('T')[0];
-  }
+  // ── PROCESS button ─────────────────────────────────────────────────────────
+  processBtn.addEventListener('click', function () {
+    var files = window._redactFiles || [];
+    if (!files.length) { setStatus('Add PDF files first.', 'warn'); return; }
 
-  function validatePassportNumber(no) {
-    var clean = no.replace(/\s/g,'').toUpperCase();
-    // Standard ICAO: 1-2 alpha + 6-9 digits, or 9 alphanum for some countries
-    if (/^[A-Z]{1,2}\d{6,9}$/.test(clean)) return { valid: true, clean: clean };
-    if (/^[A-Z0-9]{8,9}$/.test(clean)) return { valid: true, clean: clean, note: 'Non-standard format' };
-    return { valid: false, clean: clean, issue: 'Unexpected passport number format' };
-  }
+    var active = new Set();
+    document.querySelectorAll('.entity-toggle').forEach(function (t) { if (t.checked) active.add(t.value); });
+    var padding = parseInt(document.getElementById('barPadding').value, 10) || 4;
+    var mt = document.getElementById('manualTerms').value.trim();
+    var terms = mt ? mt.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;}) : [];
+    var useOcr = document.getElementById('ocrToggle').checked;
 
-  // ── Consistency checks ─────────────────────────────────────────────────────
-  function checkConsistency(allPageFields, allPageNames) {
-    var flags = [];
+    sessionResults = [];
+    resultsContainer.innerHTML = '';
+    resultsCard.style.display = '';
+    summaryCard.style.display = 'none';
+    processBtn.disabled = true;
+    downloadAllBtn.disabled = true;
+    showProgress(0, 'Starting…');
+    setStatus('Applying enhanced redaction…', 'info');
 
-    // Collect all DOBs across pages
-    var allDobs = [];
-    allPageFields.forEach(function (pf, pi) {
-      if (pf.datesOfBirth) {
-        pf.datesOfBirth.forEach(function (d) {
-          allDobs.push({ page: pi+1, value: d.normalised, raw: d.value });
-        });
+    var total = files.length, idx = 0;
+
+    function next() {
+      if (idx >= total) {
+        showProgress(100, 'Complete');
+        setTimeout(hideProgress, 1200);
+        processBtn.disabled = false;
+        var ok  = sessionResults.filter(function(r){return !r.error;}).length;
+        var bad = sessionResults.filter(function(r){return r.error;}).length;
+        downloadAllBtn.disabled = ok === 0;
+        renderSummary();
+        setStatus(bad ? '✅ '+ok+' done · ⚠️ '+bad+' error(s)' : '✅ '+ok+' file(s) redacted. Review extraction results below.', bad ? 'warn' : 'success');
+        return;
       }
-    });
-    var uniqueDobs = allDobs.map(function (d) { return d.normalised; })
-                            .filter(function (v, i, a) { return a.indexOf(v) === i && v; });
-    if (uniqueDobs.length > 1) {
-      flags.push({
-        type: 'CONFLICTING_DOB', severity: 'error',
-        message: 'Conflicting dates of birth found: ' + uniqueDobs.join(', '),
-        occurrences: allDobs,
+      var entry = files[idx], myIdx = idx;
+      showProgress((myIdx / total) * 100, '(' + (myIdx+1) + '/' + total + ') ' + entry.name);
+
+      var processor = window.EuaaPdfEnhanced || window.EuaaPdfProcessor;
+      if (!processor) { setStatus('PDF processor not loaded. Please refresh.', 'error'); return; }
+
+      processor.process(
+        entry.file, active, useOcr, padding, terms,
+        function (msg, pct) {
+          var base = (myIdx / total) * 100, slice = (1 / total) * 100;
+          showProgress(base + slice * ((pct || 50) / 100), msg);
+        }
+      ).then(function (result) {
+        sessionResults.push(result);
+        showProgress(((myIdx+1) / total) * 100, 'Done ' + (myIdx+1) + '/' + total);
+        renderCard(result);
+        idx++; next();
+      }).catch(function (err) {
+        console.error(err);
+        sessionResults.push({ sourceName: entry.name, error: true, message: String(err && err.message ? err.message : err), downloads: [], canvases: [] });
+        renderCard(sessionResults[sessionResults.length - 1]);
+        idx++; next();
       });
     }
+    next();
+  });
 
-    // Collect all passport numbers
-    var allPassports = [];
-    allPageFields.forEach(function (pf, pi) {
-      if (pf.passportNumbers) pf.passportNumbers.forEach(function (p) { allPassports.push({ page: pi+1, value: p.value }); });
+  // ── Render result card ─────────────────────────────────────────────────────
+  function renderCard(result) {
+    var card = document.createElement('article');
+    card.className = 'result-card';
+    card.dataset.sourceName = result.sourceName;
+
+    if (result.error) {
+      card.innerHTML =
+        '<div class="result-head"><h3>' + esc(result.sourceName) + '</h3>' +
+        '<span class="badge-redacted" style="background:#dc2626">&#10060; Error</span></div>' +
+        '<div style="padding:.85rem 1rem;font-size:.82rem;color:#dc2626;background:#fee2e2;font-family:monospace;white-space:pre-wrap">' + esc(result.message) + '</div>';
+      resultsContainer.appendChild(card);
+      return;
+    }
+
+    var summary = result.summary || {};
+    var docType = (result.pageData && result.pageData[0] && result.pageData[0].docType) || null;
+    var avgConf = result.pageData ? Math.round(result.pageData.reduce(function(s,p){return s+(p.confidence||0);},0) / (result.pageData.length||1)) : 0;
+    var allFlags = summary.flags || [];
+    var errorCount = allFlags.filter(function(f){return f.severity==='error';}).length;
+    var warnCount  = allFlags.filter(function(f){return f.severity==='warn';}).length;
+
+    // Head
+    var headHtml =
+      '<div class="result-head">' +
+        '<h3>' + esc(result.sourceName) + '</h3>' +
+        '<span class="result-meta">' + (result.barCount||0) + ' bar(s) · ' + (summary.pages||0) + ' page(s)</span>' +
+        '<span class="conf-badge ' + confClass(avgConf) + '">OCR ' + confLabel(avgConf) + '</span>';
+    if (errorCount) headHtml += '<span class="conf-badge conf-low">⚠ '+errorCount+' error(s)</span>';
+    if (warnCount)  headHtml += '<span class="conf-badge conf-med">! '+warnCount+' warning(s)</span>';
+    headHtml += '<span class="badge-redacted">&#9632; Redacted</span></div>';
+
+    // Tabs
+    var tabsHtml =
+      '<div class="result-tabs">' +
+        '<div class="result-tab active" data-tab="extraction">📊 Extracted Data</div>' +
+        '<div class="result-tab" data-tab="names">👤 Names</div>' +
+        '<div class="result-tab" data-tab="flags">🚩 Alerts</div>' +
+        '<div class="result-tab" data-tab="pages">📄 Pages</div>' +
+      '</div>';
+
+    // Extraction tab
+    var fields = summary.fields || {};
+    var extractHtml = '<div class="result-tab-content active" data-content="extraction">';
+    if (docType && docType.type) {
+      extractHtml += '<div class="doc-type-banner">' +
+        '<span class="doc-type-icon">' + docType.type.icon + '</span>' +
+        '<span class="doc-type-label">' + esc(docType.type.label) + '</span>' +
+        '<span class="doc-type-conf">' + (docType.confidence||0) + '% confidence</span>' +
+        '</div>';
+    }
+    extractHtml += '<table class="data-table"><thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead><tbody>';
+    var fieldDefs = [
+      { key: 'passportNumbers', label: '🛂 Passport No.' },
+      { key: 'caseNumbers',     label: '📋 Case / Ref No.' },
+      { key: 'datesOfBirth',    label: '📅 Date of Birth' },
+      { key: 'placesOfBirth',   label: '📍 Place of Birth' },
+      { key: 'nationalities',   label: '🌍 Nationality' },
+      { key: 'emails',          label: '📧 Email' },
+      { key: 'phones',          label: '📞 Phone' },
+    ];
+    var hasFields = false;
+    fieldDefs.forEach(function (fd) {
+      var vals = fields[fd.key] || [];
+      vals.forEach(function (v) {
+        hasFields = true;
+        var dispVal = v.value || '';
+        if (v.country) dispVal += ' (' + v.country + ')';
+        if (v.normalised && v.normalised !== v.value) dispVal += ' → ' + v.normalised;
+        extractHtml += '<tr><td class="field-label">' + esc(fd.label) + '</td>' +
+          '<td class="field-value">' + esc(dispVal) + '</td>' +
+          '<td><span class="conf-badge ' + confClass(v.confidence||0) + '">' + confLabel(v.confidence||0) + '</span></td></tr>';
+      });
     });
-    allPassports.forEach(function (p) {
-      var v = validatePassportNumber(p.value);
-      if (!v.valid) {
-        flags.push({
-          type: 'INVALID_PASSPORT_NO', severity: 'warn',
-          message: 'Possible OCR error in passport number "' + p.value + '" (page ' + p.page + '): ' + v.issue,
-          value: p.value, page: p.page,
+    if (fields.mrz) {
+      hasFields = true;
+      var mrz = fields.mrz;
+      if (mrz.surname)     extractHtml += '<tr><td class="field-label">🛂 MRZ Surname</td><td class="field-value">'+esc(mrz.surname)+'</td><td><span class="conf-badge conf-high">'+confLabel(mrz.confidence||92)+'</span></td></tr>';
+      if (mrz.givenNames)  extractHtml += '<tr><td class="field-label">🛂 MRZ Given Names</td><td class="field-value">'+esc(mrz.givenNames)+'</td><td><span class="conf-badge conf-high">'+confLabel(mrz.confidence||92)+'</span></td></tr>';
+      if (mrz.passportNo)  extractHtml += '<tr><td class="field-label">🛂 MRZ Passport No.</td><td class="field-value">'+esc(mrz.passportNo)+'</td><td><span class="conf-badge conf-high">'+confLabel(mrz.confidence||92)+'</span></td></tr>';
+      if (mrz.nationality) extractHtml += '<tr><td class="field-label">🛂 MRZ Nationality</td><td class="field-value">'+esc(mrz.nationality)+'</td><td><span class="conf-badge conf-high">'+confLabel(mrz.confidence||92)+'</span></td></tr>';
+      if (mrz.dob)         extractHtml += '<tr><td class="field-label">🛂 MRZ DOB</td><td class="field-value">'+esc(mrz.dob)+'</td><td><span class="conf-badge conf-high">'+confLabel(mrz.confidence||92)+'</span></td></tr>';
+    }
+    if (!hasFields) extractHtml += '<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:1rem">No structured fields extracted from this document.</td></tr>';
+    extractHtml += '</tbody></table></div>';
+
+    // Names tab
+    var allNames = summary.names || [];
+    var namesHtml = '<div class="result-tab-content" data-content="names"><div class="name-span-list">';
+    if (!allNames.length) {
+      namesHtml += '<div style="color:var(--muted);font-size:.83rem;padding:.5rem">No name spans detected.</div>';
+    } else {
+      allNames.slice(0, 60).forEach(function (ns) {
+        var canon = ns.canonical;
+        namesHtml += '<div class="name-span">' +
+          '<span class="name-text">' + esc(ns.text) + '</span>' +
+          (canon ? '<span class="name-canon">→ ' + esc(canon.canonical) + '</span><span class="name-method">(' + esc(canon.method) + ' ' + Math.round((canon.score||0)*100) + '%)</span>' : '') +
+          '<span class="conf-badge ' + confClass(ns.confidence||0) + '" style="margin-left:auto">' + confLabel(ns.confidence||0) + '</span>' +
+          '</div>';
+      });
+      if (allNames.length > 60) namesHtml += '<div style="color:var(--muted);font-size:.78rem;padding:.3rem">…and ' + (allNames.length-60) + ' more</div>';
+    }
+    // Cross-reference flags
+    var xref = summary.crossRef;
+    if (xref && xref.flags && xref.flags.length) {
+      namesHtml += '<div style="margin-top:.75rem"><strong style="font-size:.8rem">Cross-page inconsistencies:</strong>';
+      xref.flags.forEach(function (f) {
+        namesHtml += '<div class="flag-item warn" style="margin-top:.35rem"><span class="flag-icon">⚠</span><div><div class="flag-msg">' + esc(f.message) + '</div></div></div>';
+      });
+      namesHtml += '</div>';
+    }
+    namesHtml += '</div></div>';
+
+    // Flags tab
+    var flagsHtml = '<div class="result-tab-content" data-content="flags"><div class="flag-list">';
+    if (!allFlags.length) {
+      flagsHtml += '<div class="flag-item info"><span class="flag-icon">✅</span><div><div class="flag-msg">No consistency issues detected.</div></div></div>';
+    } else {
+      allFlags.forEach(function (f) {
+        var icon = f.severity === 'error' ? '🔴' : '🟡';
+        flagsHtml += '<div class="flag-item ' + esc(f.severity||'info') + '">' +
+          '<span class="flag-icon">' + icon + '</span>' +
+          '<div><div class="flag-msg">' + esc(f.message) + '</div>' +
+          (f.suggestion ? '<div class="flag-suggestion">💡 ' + esc(f.suggestion) + '</div>' : '') +
+          '</div></div>';
+      });
+    }
+    flagsHtml += '</div></div>';
+
+    // Pages tab
+    var pagesHtml = '<div class="result-tab-content" data-content="pages"><div class="img-strip">';
+    (result.pageData || []).forEach(function (pd, i) {
+      pagesHtml += '<div class="img-thumb" data-page="'+i+'">' +
+        '<div class="img-thumb-label">Page '+(i+1)+' · <span class="conf-badge '+confClass(pd.confidence||0)+'">'+confLabel(pd.confidence||0)+'</span>' +
+        (pd.detectedScript ? ' · '+esc(pd.detectedScript) : '') + '</div></div>';
+    });
+    if (!result.pageData || !result.pageData.length) pagesHtml += '<div style="color:var(--muted);font-size:.83rem;padding:.5rem">No page data available.</div>';
+    pagesHtml += '</div></div>';
+
+    // Download bar
+    var dlHtml =
+      '<div class="result-dl">' +
+        '<button class="dl-btn dl-btn-blue btn-review" type="button"><i class="fa-solid fa-pen-to-square"></i> Review &amp; add bars</button>' +
+        '<button class="dl-btn dl-btn-dark btn-dl" type="button"><i class="fa-solid fa-download"></i> Download PDF</button>' +
+      '</div>';
+
+    card.innerHTML = headHtml + tabsHtml + extractHtml + namesHtml + flagsHtml + pagesHtml + dlHtml;
+
+    // Tab switching
+    card.querySelectorAll('.result-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        card.querySelectorAll('.result-tab').forEach(function(t){t.classList.remove('active');});
+        card.querySelectorAll('.result-tab-content').forEach(function(c){c.classList.remove('active');});
+        tab.classList.add('active');
+        var key = tab.dataset.tab;
+        var content = card.querySelector('[data-content="'+key+'"]');
+        if (content) content.classList.add('active');
+      });
+    });
+
+    // Page thumbnail click → open review on that page
+    card.querySelectorAll('.img-thumb').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var pi = parseInt(th.dataset.page, 10);
+        openReviewModal(result, pi);
+      });
+    });
+
+    // Render canvas thumbnails
+    if (result.canvases && result.canvases.length) {
+      card.querySelectorAll('.img-thumb').forEach(function (th) {
+        var pi = parseInt(th.dataset.page, 10);
+        var src = result.canvases[pi];
+        if (!src) return;
+        var thumbCanvas = document.createElement('canvas');
+        var maxW = 200;
+        var scale = Math.min(1, maxW / src.width);
+        thumbCanvas.width = Math.floor(src.width * scale);
+        thumbCanvas.height = Math.floor(src.height * scale);
+        thumbCanvas.getContext('2d').drawImage(src, 0, 0, thumbCanvas.width, thumbCanvas.height);
+        th.insertBefore(thumbCanvas, th.firstChild);
+      });
+    }
+
+    // Download button
+    var res = result;
+    card.querySelector('.btn-dl').addEventListener('click', function () {
+      if (!res.downloads || !res.downloads.length) { setStatus('No download available.', 'error'); return; }
+      triggerDownload(res.downloads[0].blob, res.downloads[0].filename);
+    });
+    card.querySelector('.btn-review').addEventListener('click', function () { openReviewModal(res, 0); });
+
+    resultsContainer.appendChild(card);
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // ── Summary panel ──────────────────────────────────────────────────────────
+  function renderSummary() {
+    var totalPages = sessionResults.reduce(function(s,r){return s+(r.summary?r.summary.pages||0:0);},0);
+    var totalBars  = sessionResults.reduce(function(s,r){return s+(r.barCount||0);},0);
+    var totalNames = sessionResults.reduce(function(s,r){return s+(r.summary&&r.summary.names?r.summary.names.length:0);},0);
+    var totalFlags = sessionResults.reduce(function(s,r){return s+(r.summary&&r.summary.flags?r.summary.flags.length:0);},0);
+    var avgConf    = sessionResults.length ? Math.round(
+      sessionResults.reduce(function(s,r){
+        var c = r.pageData ? r.pageData.reduce(function(a,p){return a+(p.confidence||0);},0)/(r.pageData.length||1) : 0;
+        return s+c;
+      },0) / sessionResults.length
+    ) : 0;
+
+    summaryGrid.innerHTML =
+      stat(totalPages,   'Pages processed') +
+      stat(totalBars,    'Black bars applied') +
+      stat(totalNames,   'Names detected') +
+      stat(avgConf+'%',  'Avg. OCR confidence') +
+      stat(totalFlags,   'Alerts / flags');
+    summaryCard.style.display = '';
+  }
+  function stat(val, label) {
+    return '<div class="summary-stat"><div class="summary-stat-val">'+esc(String(val))+'</div><div class="summary-stat-label">'+esc(label)+'</div></div>';
+  }
+
+  // ── Download all ZIP ───────────────────────────────────────────────────────
+  downloadAllBtn.addEventListener('click', function () {
+    if (!sessionResults.length) return;
+    downloadAllBtn.disabled = true;
+    downloadAllBtn.innerHTML = '<span class="spinner"></span> Zipping…';
+    var zip = new JSZip();
+    sessionResults.forEach(function (r) { (r.downloads||[]).forEach(function(dl){ zip.file(dl.filename, dl.blob); }); });
+    zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }).then(function (blob) {
+      triggerDownload(blob, 'redacted-' + new Date().toISOString().slice(0,10) + '.zip');
+      setStatus('✅ ZIP download started.', 'success');
+      downloadAllBtn.disabled = false;
+      downloadAllBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download all (ZIP)';
+    }).catch(function (e) {
+      setStatus('ZIP error: ' + e.message, 'error');
+      downloadAllBtn.disabled = false;
+      downloadAllBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download all (ZIP)';
+    });
+  });
+
+  // ── REVIEW MODAL ───────────────────────────────────────────────────────────
+  var modal = { result: null, canvases: [], origCvs: [], page: 0, drawing: false, sx: 0, sy: 0, scale: 1 };
+
+  function openReviewModal(result, startPage) {
+    if (!result.canvases || !result.canvases.length) { setStatus('No page previews available.', 'warn'); return; }
+    modal.result  = result;
+    modal.page    = startPage || 0;
+    modal.drawing = false;
+    modal.origCvs = result.canvases;
+    modal.canvases = result.canvases.map(function (src) {
+      var dst = document.createElement('canvas');
+      dst.width = src.width; dst.height = src.height;
+      dst.getContext('2d').drawImage(src, 0, 0);
+      return { canvas: dst, bars: [] };
+    });
+
+    // Populate sidebar with extracted data
+    var pd = result.pageData && result.pageData[modal.page] ? result.pageData[modal.page] : null;
+    renderModalSidebar(pd, result.summary);
+
+    document.getElementById('modalTitle').textContent = 'Review: ' + result.sourceName;
+    var el = document.getElementById('reviewModal');
+    el.style.display = 'flex'; el.classList.add('open');
+    renderModalPage(); updateModalNav();
+  }
+
+  function renderModalSidebar(pd, summary) {
+    var sb = document.getElementById('modalSidebar');
+    if (!sb) return;
+    var html = '<h3>Extracted Fields</h3>';
+    if (pd && pd.fields) {
+      var fields = pd.fields;
+      var defs = [
+        {key:'passportNumbers',label:'Passport No.'},
+        {key:'caseNumbers',label:'Case / Ref'},
+        {key:'datesOfBirth',label:'Date of Birth'},
+        {key:'nationalities',label:'Nationality'},
+        {key:'placesOfBirth',label:'Place of Birth'},
+        {key:'emails',label:'Email'},
+        {key:'phones',label:'Phone'},
+      ];
+      defs.forEach(function(d){
+        var vals = fields[d.key]||[];
+        vals.forEach(function(v){
+          html += '<div class="modal-field-item"><div class="modal-field-key">'+esc(d.label)+'</div><div class="modal-field-val">'+esc(v.value||'')+'</div></div>';
         });
-      }
-    });
-
-    return flags;
+      });
+    }
+    if (summary && summary.flags && summary.flags.length) {
+      html += '<h3 style="margin-top:.8rem">Alerts</h3>';
+      summary.flags.forEach(function(f){
+        html += '<div class="modal-field-item" style="border-color:'+(f.severity==='error'?'#f87171':'#fcd34d')+'"><div class="modal-field-key">'+(f.severity==='error'?'🔴':'🟡')+' '+esc(f.type||'')+'</div><div class="modal-field-val" style="font-size:.75rem">'+esc(f.message||'')+'</div></div>';
+      });
+    }
+    sb.innerHTML = html;
   }
 
-  // ── Generate correction suggestions ───────────────────────────────────────
-  function generateSuggestions(flags) {
-    return flags.map(function (flag) {
-      var suggestion = '';
-      switch (flag.type) {
-        case 'CONFLICTING_DOB':
-          suggestion = 'Review pages listed and confirm correct date of birth. Check if one date is a document issue date.';
-          break;
-        case 'INVALID_PASSPORT_NO':
-          suggestion = 'Possible OCR confusion: 0/O, 1/I/L, 8/B. Manually verify against original document image.';
-          break;
-        case 'SPELLING_INCONSISTENCY':
-          suggestion = 'Verify spelling against primary identity document. Record all known aliases.';
-          break;
-        default:
-          suggestion = 'Manual review required.';
-      }
-      return Object.assign({}, flag, { suggestion: suggestion });
-    });
+  function closeReviewModal() {
+    var el = document.getElementById('reviewModal');
+    el.style.display = 'none'; el.classList.remove('open');
+    modal.result = null; modal.canvases = []; modal.origCvs = [];
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function renderModalPage() {
+    var container = document.getElementById('modalCanvasContainer');
+    container.innerHTML = '';
+    var pg = modal.canvases[modal.page];
+    if (!pg) return;
+    var src = pg.canvas;
+    var maxW = Math.max(container.clientWidth - 40, 400);
+    var maxH = Math.max(window.innerHeight - 260, 300);
+    var scale = Math.min(maxW / src.width, maxH / src.height, 1);
+    modal.scale = scale;
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block;user-select:none';
+    var disp = document.createElement('canvas');
+    disp.width = Math.floor(src.width * scale);
+    disp.height = Math.floor(src.height * scale);
+    disp.style.cssText = 'display:block;cursor:crosshair;touch-action:none;border-radius:4px;box-shadow:0 0 0 2px #374151,0 8px 32px rgba(0,0,0,.5)';
+    var dCtx = disp.getContext('2d');
+    dCtx.drawImage(src, 0, 0, disp.width, disp.height);
+    var ovl = document.createElement('canvas');
+    ovl.width = disp.width; ovl.height = disp.height;
+    ovl.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none';
+    var oCtx = ovl.getContext('2d');
+    wrap.appendChild(disp); wrap.appendChild(ovl); container.appendChild(wrap);
 
-  function dedupe(arr, key) {
-    key = key || 'value';
-    var seen = new Set();
-    return arr.filter(function (item) {
-      var k = item[key];
-      if (seen.has(k)) return false;
-      seen.add(k); return true;
+    function getPos(e) {
+      var r = disp.getBoundingClientRect();
+      var cx = e.touches ? e.touches[0].clientX : e.clientX;
+      var cy = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: (cx - r.left) / scale, y: (cy - r.top) / scale };
+    }
+    function thick() { var el = document.getElementById('modalBarThickness'); return el ? parseInt(el.value,10) : 16; }
+
+    disp.addEventListener('mousedown', function (e) { e.preventDefault(); modal.drawing = true; var p = getPos(e); modal.sx = p.x; modal.sy = p.y; });
+    disp.addEventListener('mousemove', function (e) {
+      if (!modal.drawing) return;
+      var p = getPos(e);
+      var x = Math.min(modal.sx, p.x), y = Math.min(modal.sy, p.y);
+      var w = Math.abs(p.x - modal.sx), h = Math.max(Math.abs(p.y - modal.sy), thick());
+      oCtx.clearRect(0, 0, ovl.width, ovl.height);
+      oCtx.fillStyle = 'rgba(0,0,0,.85)';
+      oCtx.fillRect(x * scale, y * scale, w * scale, h * scale);
     });
+    function endDraw(e) {
+      if (!modal.drawing) return; modal.drawing = false;
+      oCtx.clearRect(0, 0, ovl.width, ovl.height);
+      var p = getPos(e);
+      var x = Math.min(modal.sx, p.x), y = Math.min(modal.sy, p.y);
+      var w = Math.abs(p.x - modal.sx), h = Math.max(Math.abs(p.y - modal.sy), thick());
+      if (w < 2) return;
+      pg.bars.push({ x: x, y: y, w: w, h: h });
+      src.getContext('2d').fillStyle = '#000';
+      src.getContext('2d').fillRect(Math.floor(x), Math.floor(y), Math.ceil(w), Math.ceil(h));
+      dCtx.drawImage(src, 0, 0, disp.width, disp.height);
+    }
+    disp.addEventListener('mouseup', endDraw);
+    disp.addEventListener('mouseleave', endDraw);
+    document.getElementById('modalPageInfo').textContent = 'Page ' + (modal.page+1) + ' of ' + modal.canvases.length;
   }
 
-  return {
-    extractAll:           extractAll,
-    classifyDocument:     classifyDocument,
-    checkConsistency:     checkConsistency,
-    generateSuggestions:  generateSuggestions,
-    validatePassportNumber: validatePassportNumber,
-    validateDate:         validateDate,
-    DOC_TYPES:            DOC_TYPES,
-    NATIONALITIES:        NATIONALITIES,
-  };
-})();
+  function updateModalNav() {
+    document.getElementById('modalPrevBtn').disabled = modal.page === 0;
+    document.getElementById('modalNextBtn').disabled = modal.page >= modal.canvases.length - 1;
+    document.getElementById('modalPageInfo').textContent = 'Page ' + (modal.page+1) + ' of ' + modal.canvases.length;
+  }
+
+  document.getElementById('modalPrevBtn').addEventListener('click', function () {
+    if (modal.page > 0) { modal.page--; renderModalPage(); updateModalNav();
+      var pd = modal.result && modal.result.pageData ? modal.result.pageData[modal.page] : null;
+      renderModalSidebar(pd, modal.result && modal.result.summary);
+    }
+  });
+  document.getElementById('modalNextBtn').addEventListener('click', function () {
+    if (modal.page < modal.canvases.length - 1) { modal.page++; renderModalPage(); updateModalNav();
+      var pd = modal.result && modal.result.pageData ? modal.result.pageData[modal.page] : null;
+      renderModalSidebar(pd, modal.result && modal.result.summary);
+    }
+  });
+  document.getElementById('modalCloseBtn').addEventListener('click', closeReviewModal);
+  document.getElementById('modalCancelBtn').addEventListener('click', closeReviewModal);
+  document.getElementById('reviewModal').addEventListener('click', function (e) { if (e.target === this) closeReviewModal(); });
+
+  document.getElementById('modalUndoBtn').addEventListener('click', function () {
+    var pg = modal.canvases[modal.page];
+    if (!pg || !pg.bars.length) return;
+    pg.bars.pop();
+    var orig = modal.origCvs[modal.page];
+    var dst = pg.canvas; var ctx = dst.getContext('2d');
+    ctx.clearRect(0, 0, dst.width, dst.height); ctx.drawImage(orig, 0, 0);
+    ctx.fillStyle = '#000';
+    pg.bars.forEach(function (b) { ctx.fillRect(Math.floor(b.x), Math.floor(b.y), Math.ceil(b.w), Math.ceil(b.h)); });
+    renderModalPage(); updateModalNav();
+  });
+
+  document.getElementById('modalDownloadBtn').addEventListener('click', function () {
+    if (!modal.result || !modal.canvases.length) return;
+    var btn = document.getElementById('modalDownloadBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Building…';
+    var SCALE = (window.EuaaPdfEnhanced || {}).SCALE || 2.5;
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = null;
+    try {
+      modal.canvases.forEach(function (pg) {
+        var canvas = pg.canvas;
+        var mmW = (canvas.width / SCALE) * (25.4 / 96);
+        var mmH = (canvas.height / SCALE) * (25.4 / 96);
+        var ori = mmW > mmH ? 'l' : 'p';
+        var img = canvas.toDataURL('image/jpeg', 0.92);
+        if (!doc) doc = new jsPDF({ orientation: ori, unit: 'mm', format: [mmW, mmH], compress: true });
+        else doc.addPage([mmW, mmH], ori);
+        doc.addImage(img, 'JPEG', 0, 0, mmW, mmH);
+      });
+      var outBuf = doc.output('arraybuffer');
+      var outName = (modal.result.sourceName||'document').replace(/\.pdf$/i,'') + '_REDACTED.pdf';
+      var blob = new Blob([outBuf], { type: 'application/pdf' });
+      modal.result.downloads = [{ filename: outName, blob: blob }];
+      triggerDownload(blob, outName);
+      closeReviewModal();
+      setStatus('✅ Downloaded: ' + outName, 'success');
+    } catch (err) { setStatus('PDF error: ' + err.message, 'error'); console.error(err); }
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-download"></i> Finalise &amp; download';
+  });
+
+  document.getElementById('modalBarThickness').addEventListener('input', function () {
+    document.getElementById('modalBarThicknessVal').textContent = this.value + ' px';
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  refreshQueue();
+  setStatus('Upload PDF files above to get started.', 'info');
+  hideProgress();
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  }
+});

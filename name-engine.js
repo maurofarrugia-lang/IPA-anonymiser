@@ -1,353 +1,288 @@
 /**
- * EUAA Image Enhancement Pipeline
- * Performs multi-stage canvas-based image enhancement before OCR:
- *   1. Resolution upscaling (2× bicubic via canvas interpolation)
- *   2. Grayscale conversion
- *   3. Adaptive contrast (CLAHE approximation)
- *   4. Noise reduction (box-blur + unsharp mask)
- *   5. Binarization (Otsu threshold)
- *   6. Deskew detection and correction
- *   7. Generates 4 OCR-ready variants: original, enhanced, high-contrast, sharpened
+ * EUAA Arabic & Multilingual Name Recognition Engine
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Handles:
+ *   - Arabic script detection and transliteration normalisation
+ *   - Patronymic / compound name structures (ibn, bin, bint, abu, abd…)
+ *   - Regional spelling variants (Mohammed / Muhammad / Mohamed…)
+ *   - Fuzzy matching with Jaro-Winkler + phonetic hashing
+ *   - Name cross-referencing across document pages
+ *   - Confidence scoring per name token
  */
-const EuaaImageEnhancer = (function () {
+const EuaaNameEngine = (function () {
   'use strict';
 
-  // ─── Utility helpers ───────────────────────────────────────────────────────
+  // ── Arabic root → canonical Latin equivalents ─────────────────────────────
+  // Each entry: { roots: [arabic_strings], variants: [latin_spellings], canonical }
+  var ARABIC_NAME_TABLE = [
+    { canonical: 'Muhammad',  variants: ['Muhammad','Mohammed','Mohammad','Mohamed','Mohamad','Mohammedh','Muhamad','Muhammed','Mouhamed','Muhamed','Mohamud','Maxamed','Mahamed','Muhammet','Mehmed','Mehmet'] },
+    { canonical: 'Abdullah',  variants: ['Abdullah','Abdallah','Abdellah','Abdalla','Abdulla','Abdoulah','Abduallah','Abdulah'] },
+    { canonical: 'Abdul',     variants: ['Abdul','Abdel','Abdal','Abdu','Abdo','Abdoul','Abd'] },
+    { canonical: 'Ali',       variants: ['Ali','Aly','Aliy','Alee','Aali'] },
+    { canonical: 'Hassan',    variants: ['Hassan','Hasan','Hasen','Hassin','Hazan','Hussan','Hussen','Hussein','Husein','Husayn','Houssain','Hussain','Hussien'] },
+    { canonical: 'Ibrahim',   variants: ['Ibrahim','Ibrахим','Ibraheem','Brahim','Ebrahim','Abrahim','Ebraheem'] },
+    { canonical: 'Omar',      variants: ['Omar','Umar','Omer','Oumar','Amr','Amar'] },
+    { canonical: 'Ahmad',     variants: ['Ahmad','Ahmed','Ahmet','Ahamed','Ahmod','Ahmmad','Achmad','Akhmed'] },
+    { canonical: 'Yusuf',     variants: ['Yusuf','Yousuf','Yousef','Yusef','Youssef','Josef','Yosef','Yousouf'] },
+    { canonical: 'Khalid',    variants: ['Khalid','Khaled','Halid','Halide','Xaaliid','Kalid'] },
+    { canonical: 'Abdi',      variants: ['Abdi','Abdie','Abdy','Abdye'] },
+    { canonical: 'Farah',     variants: ['Farah','Faarax','Fara','Farax'] },
+    { canonical: 'Noor',      variants: ['Noor','Nur','Nour','Noura','Noura'] },
+    { canonical: 'Saleh',     variants: ['Saleh','Salih','Salehm','Salahuddin','Sali'] },
+    { canonical: 'Mustafa',   variants: ['Mustafa','Mustaffa','Mustaphar','Moustafa','Moustaphar'] },
+    { canonical: 'Ismail',    variants: ['Ismail','Ismaeel','Ismaiel','Ismael','Esmail','Esmaiel'] },
+    { canonical: 'Dawit',     variants: ['Dawit','David','Dawood','Daud','Daowd'] },
+    { canonical: 'Haile',     variants: ['Haile','Hailet','Hayle','Hayile'] },
+    { canonical: 'Tesfaye',   variants: ['Tesfaye','Tesfae','Tesfai','Testfaye'] },
+    { canonical: 'Aisha',     variants: ['Aisha','Ayesha','Aysha','Aiesha','Isha','Iisha'] },
+    { canonical: 'Fatima',    variants: ['Fatima','Fatimah','Fathima','Fatma','Fatume','Fadumo'] },
+    { canonical: 'Maryam',    variants: ['Maryam','Mariam','Maryem','Meriam','Miriam','Marem'] },
+    { canonical: 'Amina',     variants: ['Amina','Aminah','Aamina','Amena','Amyna'] },
+    { canonical: 'Rahel',     variants: ['Rahel','Rachel','Rakel','Raheil'] },
+    { canonical: 'Zainab',    variants: ['Zainab','Zaynab','Zineb','Zenab','Zeynep'] },
+    { canonical: 'Samir',     variants: ['Samir','Sameer','Samer','Samear'] },
+    { canonical: 'Tariq',     variants: ['Tariq','Tarik','Tareck','Tariq','Tarek'] },
+    { canonical: 'Bashir',    variants: ['Bashir','Basheer','Beshir','Besheer','Besher'] },
+    { canonical: 'Nasir',     variants: ['Nasir','Nasser','Nasr','Naseer','Naser','Nassir'] },
+    { canonical: 'Rahim',     variants: ['Rahim','Raheem','Rahman','Abdirahman','Abdurahman','Abdurrahman'] },
+    { canonical: 'Idris',     variants: ['Idris','Idriss','Idriss','Edriss','Edris'] },
+    { canonical: 'Hamid',     variants: ['Hamid','Hameed','Hamede','Abdul Hamid'] },
+    { canonical: 'Jamal',     variants: ['Jamal','Gamal','Djamal','Cemal','Camal'] },
+    { canonical: 'Kareem',    variants: ['Kareem','Karim','Karem','Kerim'] },
+    { canonical: 'Mahdi',     variants: ['Mahdi','Mehdi','Mehdee','Mahdee'] },
+    { canonical: 'Rashid',    variants: ['Rashid','Rasheed','Rasheid','Rasid','Rašid'] },
+    { canonical: 'Suleiman',  variants: ['Suleiman','Suleyman','Soliman','Sulayman','Süleyman','Suleman'] },
+    { canonical: 'Yusra',     variants: ['Yusra','Yousra','Yousra','Yusra'] },
+    { canonical: 'Hodan',     variants: ['Hodan','Hodon','Hodhan'] },
+    { canonical: 'Saado',     variants: ['Saado','Saada','Saade'] },
+    { canonical: 'Habibo',    variants: ['Habibo','Habiba','Habiibo'] },
+    { canonical: 'Asad',      variants: ['Asad','Assad','Asaad','Assaad'] },
+    { canonical: 'Osman',     variants: ['Osman','Usman','Othman','Uthman','Ousman'] },
+    { canonical: 'Elias',     variants: ['Elias','Ilyas','Iliyas','Eliyas','Ilias'] },
+    { canonical: 'Yohannes',  variants: ['Yohannes','Johannes','Yohanes','Yihannes'] },
+    { canonical: 'Meles',     variants: ['Meles','Meles','Melesse','Meless'] },
+    { canonical: 'Berhe',     variants: ['Berhe','Berhane','Berhanu','Berhie'] },
+    { canonical: 'Ghirmay',   variants: ['Ghirmay','Ghirmai','Girmay','Girmai'] },
+    { canonical: 'Tekle',     variants: ['Tekle','Teklai','Teklay','Teklu'] },
+    { canonical: 'Biniam',    variants: ['Biniam','Binyam','Binyam','Beniam'] },
+    { canonical: 'Hidri',     variants: ['Hidri','Hedri','Hidrey'] },
+  ];
 
-  function cloneCanvas(src) {
-    var c = document.createElement('canvas');
-    c.width = src.width; c.height = src.height;
-    c.getContext('2d').drawImage(src, 0, 0);
-    return c;
-  }
+  // Build lookup map: lowercase variant → canonical
+  var VARIANT_MAP = {};
+  ARABIC_NAME_TABLE.forEach(function (entry) {
+    entry.variants.forEach(function (v) {
+      VARIANT_MAP[v.toLowerCase()] = entry.canonical;
+    });
+  });
 
-  function getImageData(canvas) {
-    return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-  }
+  // ── Patronymic particles ───────────────────────────────────────────────────
+  var PARTICLES = new Set([
+    'ibn', 'bin', 'bint', 'abu', 'abd', 'abdi', 'abdu', 'abdel', 'abdal',
+    'um', 'umm', 'ben', 'beni', 'al', 'el', 'ul', 'ould', 'weld', 'mac', 'mc',
+    'de', 'di', 'du', 'van', 'von', 'te', 'ter',
+  ]);
 
-  function putImageData(canvas, id) {
-    canvas.getContext('2d').putImageData(id, 0, 0);
-  }
-
-  function createFromData(data, w, h) {
-    var c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    var ctx = c.getContext('2d');
-    var id = ctx.createImageData(w, h);
-    id.data.set(data);
-    ctx.putImageData(id, 0, 0);
-    return c;
-  }
-
-  // ─── Step 1: Upscale ───────────────────────────────────────────────────────
-  // If canvas is smaller than targetMin in either dimension, scale up 2×
-  function upscale(canvas, targetMin) {
-    targetMin = targetMin || 1200;
-    var w = canvas.width, h = canvas.height;
-    if (w >= targetMin && h >= targetMin) return canvas;
-    var factor = Math.ceil(targetMin / Math.min(w, h));
-    factor = Math.min(factor, 4);
-    var out = document.createElement('canvas');
-    out.width = w * factor; out.height = h * factor;
-    var ctx = out.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(canvas, 0, 0, out.width, out.height);
-    return out;
-  }
-
-  // ─── Step 2: Grayscale ─────────────────────────────────────────────────────
-  function toGrayscale(canvas) {
-    var id = getImageData(canvas);
-    var d = id.data, len = d.length;
-    for (var i = 0; i < len; i += 4) {
-      var g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
-      d[i] = d[i+1] = d[i+2] = g;
+  // ── Jaro-Winkler distance ─────────────────────────────────────────────────
+  function jaro(s1, s2) {
+    if (s1 === s2) return 1;
+    var l1 = s1.length, l2 = s2.length;
+    if (!l1 || !l2) return 0;
+    var matchDist = Math.floor(Math.max(l1, l2) / 2) - 1;
+    if (matchDist < 0) matchDist = 0;
+    var s1Matches = new Array(l1).fill(false);
+    var s2Matches = new Array(l2).fill(false);
+    var matches = 0, transpositions = 0;
+    for (var i = 0; i < l1; i++) {
+      var start = Math.max(0, i - matchDist);
+      var end   = Math.min(i + matchDist + 1, l2);
+      for (var j = start; j < end; j++) {
+        if (s2Matches[j] || s1[i] !== s2[j]) continue;
+        s1Matches[i] = true; s2Matches[j] = true; matches++; break;
+      }
     }
-    var out = cloneCanvas(canvas);
-    putImageData(out, id);
-    return out;
+    if (!matches) return 0;
+    var k = 0;
+    for (var i = 0; i < l1; i++) {
+      if (!s1Matches[i]) continue;
+      while (!s2Matches[k]) k++;
+      if (s1[i] !== s2[k]) transpositions++;
+      k++;
+    }
+    return (matches/l1 + matches/l2 + (matches - transpositions/2)/matches) / 3;
   }
 
-  // ─── Step 3: Adaptive contrast (tile-based CLAHE approximation) ────────────
-  function adaptiveContrast(canvas, tileSize, clipLimit) {
-    tileSize = tileSize || 32;
-    clipLimit = clipLimit || 3.0;
-    var w = canvas.width, h = canvas.height;
-    var id = getImageData(canvas);
-    var src = new Uint8ClampedArray(id.data);
-    var dst = new Uint8ClampedArray(src.length);
+  function jaroWinkler(s1, s2) {
+    var j = jaro(s1, s2);
+    var prefix = 0;
+    for (var i = 0; i < Math.min(4, Math.min(s1.length, s2.length)); i++) {
+      if (s1[i] === s2[i]) prefix++; else break;
+    }
+    return j + prefix * 0.1 * (1 - j);
+  }
 
-    var tilesX = Math.ceil(w / tileSize);
-    var tilesY = Math.ceil(h / tileSize);
+  // ── Phonetic normalisation ─────────────────────────────────────────────────
+  // Collapses common Arabic transliteration variations to a shared root
+  function phoneticNorm(str) {
+    return str.toLowerCase()
+      .replace(/ph/g,   'f')
+      .replace(/ck/g,   'k')
+      .replace(/ae/g,   'a')
+      .replace(/oe/g,   'u')
+      .replace(/ou/g,   'u')
+      .replace(/oo/g,   'u')
+      .replace(/ee|ei/g,'i')
+      .replace(/gh/g,   'g')
+      .replace(/kh/g,   'k')
+      .replace(/dh/g,   'd')
+      .replace(/th/g,   't')
+      .replace(/sh/g,   'sh')
+      .replace(/ch/g,   'sh')
+      .replace(/[aeiou]+/g, function(m){ return m[0]; }) // vowel reduction
+      .replace(/(.)\1+/g,   '$1')   // deduplicate
+      .replace(/[^a-z]/g,   '');    // strip non-alpha
+  }
 
-    // Build per-tile LUTs
-    var luts = [];
-    for (var ty = 0; ty < tilesY; ty++) {
-      luts[ty] = [];
-      for (var tx = 0; tx < tilesX; tx++) {
-        var x0 = tx * tileSize, y0 = ty * tileSize;
-        var x1 = Math.min(x0 + tileSize, w);
-        var y1 = Math.min(y0 + tileSize, h);
-        var hist = new Float32Array(256);
-        var count = 0;
-        for (var py = y0; py < y1; py++) {
-          for (var px = x0; px < x1; px++) {
-            hist[src[(py * w + px) * 4]] += 1;
-            count++;
+  // ── Canonical name lookup ─────────────────────────────────────────────────
+  function canonicalise(name) {
+    if (!name) return null;
+    var low = name.toLowerCase().trim();
+    // Direct match
+    if (VARIANT_MAP[low]) return { canonical: VARIANT_MAP[low], method: 'direct', score: 1.0 };
+    // Fuzzy match against all known variants
+    var bestScore = 0, bestCanonical = null;
+    var normInput = phoneticNorm(low);
+    Object.keys(VARIANT_MAP).forEach(function (variant) {
+      var jw = jaroWinkler(low, variant);
+      var ph = jaroWinkler(normInput, phoneticNorm(variant));
+      var combined = jw * 0.6 + ph * 0.4;
+      if (combined > bestScore) { bestScore = combined; bestCanonical = VARIANT_MAP[variant]; }
+    });
+    if (bestScore >= 0.82) return { canonical: bestCanonical, method: 'fuzzy', score: bestScore };
+    return null;
+  }
+
+  // ── Name span extraction from OCR word list ───────────────────────────────
+  var LEGAL_WORDS = new Set([
+    'the','this','that','these','their','and','but','for','with','from',
+    'her','his','she','they','yes','no','not','any','all','article','section',
+    'court','tribunal','agency','applicant','appellant','respondent','claimant',
+    'ref','case','file','page','date','born','nationality','passport','id',
+    'number','name','surname','family','given','address','form','application',
+    'interview','hearing','decision','appeal','status','refugee','asylum',
+    'document','certificate','birth','marriage','death','police','report',
+    'medical','note','letter','office','ministry','authority','government',
+    'country','city','place','signature','signed','issued','valid','issued',
+  ]);
+
+  function isNameToken(tok) {
+    var clean = tok.replace(/[^A-Za-z'\-]/g, '');
+    if (clean.length < 2) return false;
+    if (!/^[A-Z]/.test(tok)) return false;
+    if (LEGAL_WORDS.has(clean.toLowerCase())) return false;
+    if (/^\d/.test(tok)) return false;
+    if (/^[A-Z\s\-]+$/.test(tok) && clean.length > 4) return false; // All-caps headings
+    return true;
+  }
+
+  // ── Extract name spans from word array ────────────────────────────────────
+  function extractNameSpans(words) {
+    var spans = [];
+    var i = 0;
+    while (i < words.length) {
+      var w = words[i];
+      var clean = (w.text || '').replace(/[^A-Za-z'\-]/g, '');
+      var isParticle = PARTICLES.has(clean.toLowerCase());
+      if (!isNameToken(w.text) && !isParticle) { i++; continue; }
+
+      // Start of potential name span
+      var j = i;
+      while (j < words.length && j < i + 6) {
+        var c = (words[j].text || '').replace(/[^A-Za-z'\-]/g, '').toLowerCase();
+        if (isNameToken(words[j].text) || PARTICLES.has(c)) j++;
+        else break;
+      }
+
+      // Need at least 2 tokens, last must be proper name token
+      if (j > i + 1 && isNameToken(words[j-1].text)) {
+        var spanWords = words.slice(i, j);
+        var spanText = spanWords.map(function (w) { return w.text; }).join(' ');
+        var spanConf = spanWords.reduce(function (s, w) { return s + w.confidence; }, 0) / spanWords.length;
+        var canon = null;
+        spanWords.forEach(function (sw) {
+          var c = canonicalise(sw.text);
+          if (c && (!canon || c.score > canon.score)) canon = c;
+        });
+        spans.push({
+          text:       spanText,
+          words:      spanWords,
+          confidence: spanConf,
+          canonical:  canon,
+          bbox:       {
+            x0: spanWords[0].bbox ? spanWords[0].bbox.x0 : 0,
+            y0: spanWords[0].bbox ? spanWords[0].bbox.y0 : 0,
+            x1: spanWords[j-1-i] && spanWords[j-1-i].bbox ? spanWords[j-1-i].bbox.x1 : 0,
+            y1: spanWords[0].bbox ? spanWords[0].bbox.y1 : 0,
           }
-        }
-        // Clip histogram
-        var excess = 0;
-        var limit = clipLimit * count / 256;
-        for (var k = 0; k < 256; k++) {
-          if (hist[k] > limit) { excess += hist[k] - limit; hist[k] = limit; }
-        }
-        var add = excess / 256;
-        for (var k = 0; k < 256; k++) hist[k] += add;
-        // Build CDF LUT
-        var lut = new Uint8ClampedArray(256);
-        var cdf = 0, cdfMin = -1;
-        for (var k = 0; k < 256; k++) {
-          cdf += hist[k];
-          if (cdfMin < 0 && hist[k] > 0) cdfMin = cdf;
-          lut[k] = Math.round((cdf - cdfMin) / (count - cdfMin) * 255);
-        }
-        luts[ty][tx] = lut;
+        });
+        i = j;
+      } else {
+        i++;
       }
     }
-
-    // Bilinear interpolation of LUTs
-    for (var py = 0; py < h; py++) {
-      for (var px = 0; px < w; px++) {
-        var idx = (py * w + px) * 4;
-        var v = src[idx];
-        var txF = (px / tileSize) - 0.5; var ty_F = (py / tileSize) - 0.5;
-        var tx0 = Math.max(0, Math.floor(txF)), tx1 = Math.min(tilesX - 1, tx0 + 1);
-        var ty0 = Math.max(0, Math.floor(ty_F)), ty1 = Math.min(tilesY - 1, ty0 + 1);
-        var wx = txF - tx0; var wy = ty_F - ty0;
-        if (wx < 0) wx = 0; if (wy < 0) wy = 0;
-        var v00 = luts[ty0][tx0][v], v10 = luts[ty0][tx1][v];
-        var v01 = luts[ty1][tx0][v], v11 = luts[ty1][tx1][v];
-        var out = Math.round(
-          v00 * (1 - wx) * (1 - wy) +
-          v10 * wx * (1 - wy) +
-          v01 * (1 - wx) * wy +
-          v11 * wx * wy
-        );
-        dst[idx] = dst[idx+1] = dst[idx+2] = out;
-        dst[idx+3] = src[idx+3];
-      }
-    }
-    return createFromData(dst, w, h);
+    return spans;
   }
 
-  // ─── Step 4: Gaussian blur (3×3 approximation) ────────────────────────────
-  function gaussianBlur(canvas, radius) {
-    radius = radius || 1;
-    var w = canvas.width, h = canvas.height;
-    var id = getImageData(canvas);
-    var src = new Uint8ClampedArray(id.data);
-    var dst = new Uint8ClampedArray(src.length);
-    // Simple 3×3 box blur repeated `radius` times
-    var passes = radius;
-    var cur = src;
-    for (var p = 0; p < passes; p++) {
-      var nxt = new Uint8ClampedArray(cur.length);
-      for (var y = 1; y < h - 1; y++) {
-        for (var x = 1; x < w - 1; x++) {
-          var sum = 0;
-          for (var dy = -1; dy <= 1; dy++) {
-            for (var dx = -1; dx <= 1; dx++) {
-              sum += cur[((y + dy) * w + (x + dx)) * 4];
-            }
-          }
-          var i = (y * w + x) * 4;
-          nxt[i] = nxt[i+1] = nxt[i+2] = Math.round(sum / 9);
-          nxt[i+3] = cur[i+3];
-        }
-      }
-      cur = nxt;
-    }
-    return createFromData(cur, w, h);
-  }
-
-  // ─── Step 5: Unsharp mask ──────────────────────────────────────────────────
-  function unsharpMask(canvas, strength) {
-    strength = strength || 1.5;
-    var blurred = gaussianBlur(canvas, 1);
-    var w = canvas.width, h = canvas.height;
-    var orig = getImageData(canvas).data;
-    var blur = getImageData(blurred).data;
-    var dst = new Uint8ClampedArray(orig.length);
-    for (var i = 0; i < orig.length; i += 4) {
-      var sharp = orig[i] + strength * (orig[i] - blur[i]);
-      var v = Math.max(0, Math.min(255, Math.round(sharp)));
-      dst[i] = dst[i+1] = dst[i+2] = v;
-      dst[i+3] = orig[i+3];
-    }
-    return createFromData(dst, w, h);
-  }
-
-  // ─── Step 6: Otsu binarization ────────────────────────────────────────────
-  function otsuThreshold(canvas) {
-    var id = getImageData(canvas);
-    var d = id.data, len = d.length;
-    // Build histogram
-    var hist = new Float32Array(256);
-    var total = 0;
-    for (var i = 0; i < len; i += 4) { hist[d[i]]++; total++; }
-    // Otsu
-    var sum = 0;
-    for (var k = 0; k < 256; k++) sum += k * hist[k];
-    var sumB = 0, wB = 0, wF = 0, maxVar = 0, thresh = 128;
-    for (var t = 0; t < 256; t++) {
-      wB += hist[t]; if (!wB) continue;
-      wF = total - wB; if (!wF) break;
-      sumB += t * hist[t];
-      var mB = sumB / wB, mF = (sum - sumB) / wF;
-      var bv = wB * wF * (mB - mF) * (mB - mF);
-      if (bv > maxVar) { maxVar = bv; thresh = t; }
-    }
-    return thresh;
-  }
-
-  function binarize(canvas, thresh) {
-    if (thresh === undefined) thresh = otsuThreshold(canvas);
-    var id = getImageData(canvas);
-    var d = id.data, len = d.length;
-    for (var i = 0; i < len; i += 4) {
-      var v = d[i] > thresh ? 255 : 0;
-      d[i] = d[i+1] = d[i+2] = v;
-    }
-    var out = cloneCanvas(canvas);
-    putImageData(out, id);
-    return out;
-  }
-
-  // ─── Step 7: Deskew ───────────────────────────────────────────────────────
-  // Projection profile deskew — finds angle that maximises horizontal variance
-  function deskew(canvas) {
-    var w = canvas.width, h = canvas.height;
-    var binary = binarize(toGrayscale(canvas));
-    var id = getImageData(binary);
-    var d = id.data;
-
-    // Sample angles from -10° to +10° in 0.5° steps
-    var bestAngle = 0, bestScore = -1;
-    var angles = [];
-    for (var a = -10; a <= 10; a += 0.5) angles.push(a);
-
-    angles.forEach(function (angleDeg) {
-      var angle = angleDeg * Math.PI / 180;
-      var cos = Math.cos(angle), sin = Math.sin(angle);
-      var profile = new Float32Array(h);
-      for (var y = 0; y < h; y++) {
-        var dark = 0;
-        for (var x = 0; x < w; x++) {
-          // Rotated pixel lookup
-          var cx = x - w / 2, cy = y - h / 2;
-          var sx = Math.round(cx * cos + cy * sin + w / 2);
-          var sy = Math.round(-cx * sin + cy * cos + h / 2);
-          if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
-            if (d[(sy * w + sx) * 4] < 128) dark++;
-          }
-        }
-        profile[y] = dark;
-      }
-      // Score = variance of profile
-      var mean = 0;
-      for (var i = 0; i < h; i++) mean += profile[i];
-      mean /= h;
-      var variance = 0;
-      for (var i = 0; i < h; i++) variance += (profile[i] - mean) * (profile[i] - mean);
-      if (variance > bestScore) { bestScore = variance; bestAngle = angleDeg; }
+  // ── Cross-page name consistency check ─────────────────────────────────────
+  function crossReferenceNames(allPageNames) {
+    // Build a list of all unique canonical names seen across pages
+    var canonical = {};
+    allPageNames.forEach(function (pageNames, pageIdx) {
+      pageNames.forEach(function (span) {
+        var key = span.canonical ? span.canonical.canonical : span.text.toLowerCase();
+        if (!canonical[key]) canonical[key] = [];
+        canonical[key].push({ page: pageIdx + 1, text: span.text, conf: span.confidence });
+      });
     });
 
-    if (Math.abs(bestAngle) < 0.3) return canvas; // No significant skew
-
-    // Apply rotation
-    var out = document.createElement('canvas');
-    out.width = w; out.height = h;
-    var ctx = out.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.translate(w / 2, h / 2);
-    ctx.rotate(-bestAngle * Math.PI / 180);
-    ctx.translate(-w / 2, -h / 2);
-    ctx.drawImage(canvas, 0, 0);
-    return out;
-  }
-
-  // ─── High-contrast variant ─────────────────────────────────────────────────
-  function highContrast(canvas) {
-    var id = getImageData(canvas);
-    var d = id.data, len = d.length;
-    // Find min/max luminance
-    var min = 255, max = 0;
-    for (var i = 0; i < len; i += 4) {
-      var v = d[i];
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    var range = max - min || 1;
-    var out = new Uint8ClampedArray(d.length);
-    for (var i = 0; i < len; i += 4) {
-      var v = Math.round((d[i] - min) / range * 255);
-      // Gamma correction for faded text
-      v = Math.round(Math.pow(v / 255, 0.7) * 255);
-      out[i] = out[i+1] = out[i+2] = v;
-      out[i+3] = d[i+3];
-    }
-    return createFromData(out, canvas.width, canvas.height);
-  }
-
-  // ─── Main pipeline ─────────────────────────────────────────────────────────
-  /**
-   * enhance(canvas) → Promise<{original, enhanced, highContrast, sharpened, angle}>
-   * All returned canvases are ready to feed into Tesseract.
-   */
-  function enhance(canvas) {
-    return new Promise(function (resolve) {
-      try {
-        // Step 1: Upscale
-        var up = upscale(canvas, 1200);
-        // Step 2: Grayscale
-        var gray = toGrayscale(up);
-        // Step 3: Deskew (on grayscale)
-        var deskewed = deskew(gray);
-        // Step 4: CLAHE adaptive contrast
-        var clahe = adaptiveContrast(deskewed, 32, 3.0);
-        // Step 5: Denoise
-        var denoised = gaussianBlur(clahe, 1);
-        // Enhanced variant (denoised + sharpened)
-        var enhancedCanvas = unsharpMask(denoised, 1.8);
-        // High-contrast variant
-        var hcCanvas = highContrast(deskewed);
-        var hcSharp = unsharpMask(hcCanvas, 2.0);
-        // Sharpened variant (strong unsharp mask on enhanced)
-        var sharpCanvas = unsharpMask(enhancedCanvas, 2.5);
-
-        resolve({
-          original:     canvas,
-          enhanced:     enhancedCanvas,
-          highContrast: hcSharp,
-          sharpened:    sharpCanvas,
-          deskewAngle:  0 // returned for info
-        });
-      } catch (e) {
-        // Fallback — return original if enhancement fails
-        resolve({
-          original:     canvas,
-          enhanced:     canvas,
-          highContrast: canvas,
-          sharpened:    canvas,
-          deskewAngle:  0,
-          error:        e.message
+    var flags = [];
+    Object.keys(canonical).forEach(function (key) {
+      var occurrences = canonical[key];
+      if (occurrences.length < 2) return;
+      // Check for spelling inconsistencies
+      var texts = occurrences.map(function (o) { return o.text.toLowerCase(); });
+      var unique = texts.filter(function (v, i, a) { return a.indexOf(v) === i; });
+      if (unique.length > 1) {
+        flags.push({
+          type:    'SPELLING_INCONSISTENCY',
+          key:     key,
+          occurrences: occurrences,
+          message: 'Name "' + key + '" appears with different spellings across pages: ' + unique.join(', '),
+          severity: 'warn',
         });
       }
     });
+
+    return { canonical: canonical, flags: flags };
   }
 
-  return { enhance: enhance, upscale: upscale, binarize: binarize, toGrayscale: toGrayscale };
+  // ── Similarity scoring for two name strings ───────────────────────────────
+  function nameSimilarity(a, b) {
+    if (!a || !b) return 0;
+    var direct = jaroWinkler(a.toLowerCase(), b.toLowerCase());
+    var phon   = jaroWinkler(phoneticNorm(a), phoneticNorm(b));
+    var canA = canonicalise(a), canB = canonicalise(b);
+    var canon = (canA && canB && canA.canonical === canB.canonical) ? 1.0 : 0;
+    return Math.max(direct, phon * 0.9, canon);
+  }
+
+  return {
+    extractNameSpans:     extractNameSpans,
+    canonicalise:         canonicalise,
+    crossReferenceNames:  crossReferenceNames,
+    nameSimilarity:       nameSimilarity,
+    jaroWinkler:          jaroWinkler,
+    phoneticNorm:         phoneticNorm,
+    ARABIC_NAME_TABLE:    ARABIC_NAME_TABLE,
+  };
 })();
