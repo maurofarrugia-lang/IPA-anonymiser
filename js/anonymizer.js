@@ -225,12 +225,30 @@ const EuaaAnonymizer = (() => {
     if (active.has('PHONE'))
       P.push(['PHONE', /(?:\+|00)\d[\d\s().\-]{6,}\d|\b\d{3,4}[\s.\-]\d{3,4}[\s.\-]\d{3,4}\b/g]);
 
-    // Refcom / IPAT / case reference numbers  e.g. "Refcom no 32939", "IPAT ref N/A"
+    // ── Refcom / IPAT / case reference numbers ──────────────────────────────
+    // Covers all known EUAA Refcom formats:
+    //   "Refcom 32939"          "Refcom no. 32939"       "Refcom number 32939"
+    //   "Refcom: 32939"         "Refcom no: 32939"       "Refcom No 32939"
+    //   "REFCOM 32939"          "refcom32939"
+    //   "MTL/2024/12345"        "SYR-2023-00456"         "AFG/2022/789"
+    //   "IPAT reference: N/A"   "IPAT ref 12345"
+    //   Standalone number on same line as the word Refcom anywhere
     if (active.has('CASE_ID')) {
-      P.push(['REFCOM',   /\bRefcom\s+(?:no\.?|number)?\s*\d{4,8}\b/gi]);
-      P.push(['REFCOM',   /\bIPAT\s+reference\s*:\s*\S+/gi]);
-      P.push(['CASE_ID',  /\b(?:Case|File|Ref|Reference)\s*(?:No\.?|Number|#)?\s*[:\-]?\s*[A-Z0-9]{2,}[\/\-]?\d{2,}\b/gi]);
-      P.push(['CASE_ID',  /\b[A-Z]{1,4}[\/\-]\d{4}[\/\-]\d{2,6}\b/g]);
+      // "Refcom" followed (optionally) by no./number/: then digits
+      P.push(['REFCOM', /\bRefcom\s*(?:no\.?|number|num\.?|#|:)?\s*:?\s*\d{3,10}\b/gi]);
+      // "Refcom" with slash/dash style  e.g. Refcom/32939
+      P.push(['REFCOM', /\bRefcom\s*[\/\-]\s*\d{3,10}\b/gi]);
+      // Standalone Refcom number — digits that appear after "Refcom" label on the same line
+      // (handles "Refcom     32939" with lots of whitespace)
+      P.push(['REFCOM', /\bRefcom\b[^\n\r]{0,30}?(\d{4,10})\b/gi]);
+      // Country-code / year / number  e.g. MTL/2024/12345  AFG-2022-00456
+      P.push(['REFCOM', /\b[A-Z]{2,4}[\/\-]\d{4}[\/\-]\d{3,8}\b/g]);
+      // IPAT reference patterns
+      P.push(['REFCOM', /\bIPAT\s+(?:reference|ref\.?)\s*[:\-]?\s*\S+/gi]);
+      // Generic case/file/ref number  e.g. "Case No. ABC/2024/001"
+      P.push(['CASE_ID', /\b(?:Case|File|Ref|Reference)\s*(?:No\.?|Number|Num\.?|#)?\s*[:\-]?\s*[A-Z0-9]{2,}[\/\-]?\d{2,}\b/gi]);
+      // Bare slash-format reference  e.g. "ABC/2024/001"
+      P.push(['CASE_ID', /\b[A-Z]{1,4}[\/\-]\d{4}[\/\-]\d{2,6}\b/g]);
     }
 
     if (active.has('PASSPORT_OR_ID'))
