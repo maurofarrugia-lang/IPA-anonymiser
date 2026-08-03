@@ -77,7 +77,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
 .range-wrap{display:flex;align-items:center;gap:.6rem;flex:1;min-width:180px}
 input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 .range-val{min-width:3rem;font-size:.86rem;font-weight:700;color:var(--black);font-family:monospace;text-align:right}
-.bar-preview{height:18px;background:var(--black);border-radius:2px;transition:width .15s}
+.bar-preview{height:18px;background:var(--black);border-radius:2px;transition:height .15s}
 
 /* ── Manual terms ── */
 .refcom-box{width:100%;padding:.6rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.86rem;font-family:'Consolas','Courier New',monospace;background:var(--bg);color:var(--text);resize:vertical;transition:border-color .15s,box-shadow .15s;line-height:1.7;min-height:80px}
@@ -101,10 +101,14 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 
 /* ── Action ── */
 .action-row{padding:1rem 1.5rem;display:flex;flex-wrap:wrap;gap:.7rem;align-items:center}
-.progress-wrap{padding:0 1.5rem 1rem}
-.progress-label{font-size:.8rem;color:var(--muted);margin-bottom:.4rem}
-.progress-bar-track{height:7px;background:var(--border);border-radius:4px;overflow:hidden}
-.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--black),#374151);border-radius:4px;transition:width .3s ease}
+
+/* ── Progress bar ── */
+.progress-wrap{padding:.5rem 1.5rem 1rem}
+.progress-label{font-size:.8rem;color:var(--muted);margin-bottom:.4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.progress-bar-track{height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.progress-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#1d4ed8,#111827);border-radius:4px;transition:width .25s ease}
+
+/* ── Status ── */
 .status-banner{display:flex;align-items:center;gap:.55rem;padding:.8rem 1.5rem;background:#f8fafc;border-top:1px solid var(--border);font-size:.86rem;color:var(--muted)}
 .status-banner.info{background:#f0f7ff;color:var(--primary);border-color:#bfdbfe}
 .status-banner.success{background:var(--success-l);color:var(--success);border-color:#bbf7d0}
@@ -118,13 +122,105 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 .result-head h3{font-size:.88rem;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .result-meta{font-size:.76rem;color:var(--muted)}
 .badge-redacted{background:#111827;color:#f9fafb;font-size:.73rem;padding:.12rem .45rem;border-radius:3px;font-weight:700;flex-shrink:0}
-.result-dl{display:flex;gap:.4rem;flex-wrap:wrap;padding:.55rem 1rem;border-bottom:1px solid var(--border);background:#fafbfc}
-.dl-link{display:inline-flex;align-items:center;gap:.3rem;padding:.32rem .6rem;background:var(--black);color:#fff;border-radius:var(--r-sm);font-size:.76rem;font-weight:600;text-decoration:none;transition:background .12s}
-.dl-link:hover{background:#374151}
+.result-dl{display:flex;gap:.4rem;flex-wrap:wrap;padding:.55rem 1rem;background:#fafbfc}
+.dl-link{display:inline-flex;align-items:center;gap:.3rem;padding:.32rem .7rem;background:var(--black);color:#fff;border-radius:var(--r-sm);font-size:.82rem;font-weight:600;text-decoration:none;border:none;cursor:pointer;transition:background .12s;font-family:var(--font)}
+.dl-link:hover:not(:disabled){background:#374151}
+.btn-review{background:#1d4ed8;color:#fff}
+.btn-review:hover:not(:disabled){background:#1e40af}
 
-/* ── Misc ── */
+/* ── Spinner ── */
 .spinner{display:inline-block;width:15px;height:15px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ══════════════════════════════════════════════════════════
+   REVIEW MODAL
+   ══════════════════════════════════════════════════════════ */
+.modal-backdrop{
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.75);
+  z-index:9000;
+  align-items:stretch;
+  justify-content:stretch;
+  flex-direction:column;
+}
+.modal-backdrop.open{display:flex;}
+.modal-shell{
+  display:flex;flex-direction:column;
+  background:#1a2233;
+  width:100%;height:100%;
+  overflow:hidden;
+}
+/* top bar */
+.modal-topbar{
+  display:flex;align-items:center;gap:.75rem;
+  padding:.7rem 1.2rem;
+  background:#111827;
+  border-bottom:1px solid #374151;
+  flex-shrink:0;
+  flex-wrap:wrap;
+}
+.modal-title{color:#f9fafb;font-size:.95rem;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal-hint{color:#9ca3af;font-size:.78rem;flex-shrink:0}
+
+/* canvas area */
+.modal-canvas-area{
+  flex:1;overflow:auto;
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:1.2rem;
+  background:#1a2233;
+  min-height:0;
+}
+#modalCanvasContainer{
+  display:flex;align-items:flex-start;justify-content:center;
+  width:100%;
+}
+#modalDisplayCanvas{
+  box-shadow:0 0 0 2px #374151, 0 8px 32px rgba(0,0,0,.5);
+  border-radius:4px;
+  max-width:100%;
+}
+
+/* bottom toolbar */
+.modal-toolbar{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.7rem 1.2rem;
+  background:#111827;
+  border-top:1px solid #374151;
+  flex-shrink:0;
+  flex-wrap:wrap;
+}
+.modal-nav-group{display:flex;align-items:center;gap:.5rem}
+.modal-page-info{color:#d1d5db;font-size:.85rem;font-weight:600;min-width:100px;text-align:center}
+
+/* dark modal buttons */
+.btn-modal{
+  display:inline-flex;align-items:center;gap:.35rem;
+  padding:.4rem .85rem;
+  border-radius:6px;font-size:.83rem;font-weight:600;
+  border:1px solid transparent;cursor:pointer;
+  transition:background .12s;font-family:var(--font);
+  white-space:nowrap;
+}
+.btn-modal:disabled{opacity:.35;cursor:not-allowed}
+.btn-modal-ghost{background:transparent;color:#d1d5db;border-color:#374151}
+.btn-modal-ghost:hover:not(:disabled){background:#374151;color:#f9fafb}
+.btn-modal-danger{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
+.btn-modal-danger:hover:not(:disabled){background:#991b1b}
+.btn-modal-primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+.btn-modal-primary:hover:not(:disabled){background:#1e40af}
+.btn-modal-success{background:#15803d;color:#fff;border-color:#15803d}
+.btn-modal-success:hover:not(:disabled){background:#166534}
+
+/* thickness row inside modal */
+.modal-thickness-row{display:flex;align-items:center;gap:.5rem;color:#d1d5db;font-size:.8rem}
+.modal-thickness-row input[type=range]{width:90px;accent-color:#6366f1}
+.modal-thickness-val{font-family:monospace;font-weight:700;color:#a5b4fc;min-width:32px}
+
+/* separator */
+.modal-sep{width:1px;height:24px;background:#374151;flex-shrink:0}
+
+/* ── Footer ── */
 .site-footer{text-align:center;padding:1.5rem 1rem;font-size:.78rem;color:var(--muted);border-top:1px solid var(--border);background:var(--surface);margin-top:2rem}
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
@@ -133,6 +229,8 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
   .cat-grid{grid-template-columns:1fr 1fr}
   .action-row{flex-direction:column;align-items:stretch}
   .btn-lg{justify-content:center}
+  .modal-toolbar{gap:.35rem}
+  .modal-thickness-row input[type=range]{width:60px}
 }
   </style>
 </head>
@@ -310,16 +408,16 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
 
     <!-- Manual terms to black out -->
     <div class="opt-group">
-      <label class="opt-label" for="manualTerms"><i class="fa-solid fa-keyboard"></i> Manual terms to black out</label>
-      <p class="field-hint" style="margin-bottom:.6rem;">Type any specific words, numbers or phrases — one per line. Every exact match in the PDF will be blacked out.</p>
+      <label class="opt-label" for="manualTerms"><i class="fa-solid fa-keyboard"></i> Manual terms to auto black out</label>
+      <p class="field-hint" style="margin-bottom:.6rem;">Type specific words, numbers or phrases — one per line. Every exact match in the PDF will be blacked out automatically.</p>
       <textarea id="manualTerms" class="refcom-box" rows="4" spellcheck="false" autocomplete="off"
         placeholder="e.g.&#10;32939&#10;MTL/2024/12345&#10;John Smith&#10;SYR-2023-00456"></textarea>
       <div class="chip-row" id="termChips"></div>
     </div>
 
-    <!-- Black bar size -->
+    <!-- Black bar thickness -->
     <div class="opt-group">
-      <label class="opt-label"><i class="fa-solid fa-expand"></i> Black bar thickness</label>
+      <label class="opt-label"><i class="fa-solid fa-expand"></i> Auto-bar thickness (padding)</label>
       <p class="field-hint" style="margin-bottom:.75rem;">Increase if bars are not fully covering text. The bar extends above and below each detected word.</p>
       <div class="bar-size-row">
         <label>Padding (px):</label>
@@ -329,7 +427,7 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
         </div>
         <div>
           <div style="font-size:.75rem;color:var(--muted);margin-bottom:.3rem;">Preview:</div>
-          <div class="bar-preview" id="barPreview" style="width:120px;"></div>
+          <div class="bar-preview" id="barPreview" style="width:120px;height:18px;"></div>
         </div>
       </div>
     </div>
@@ -354,7 +452,7 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
     </div>
     <div class="action-row">
       <button class="btn btn-black btn-lg" id="processBtn" disabled>
-        <i class="fa-solid fa-square"></i> Apply black bars &amp; download
+        <i class="fa-solid fa-square"></i> Apply black bars
       </button>
       <button class="btn btn-outline btn-lg" id="downloadAllBtn" disabled>
         <i class="fa-solid fa-download"></i> Download all (ZIP)
@@ -365,9 +463,11 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
     </div>
     <div class="progress-wrap" id="progressWrap" style="display:none;">
       <div class="progress-label" id="progressLabel">Processing…</div>
-      <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
     </div>
-    <div class="status-banner" id="statusBanner">
+    <div class="status-banner info" id="statusBanner">
       <i class="fa-solid fa-circle-info"></i>
       <span id="statusText">Upload PDF files above to get started.</span>
     </div>
@@ -392,22 +492,92 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
   EUAA PDF Redaction Tool — All processing is done entirely in your browser. No files or data are transmitted to any server.
 </footer>
 
-<!-- ── Bar padding preview script (no CDN needed) ── -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MANUAL REVIEW MODAL
+     Full-screen overlay. Shows each page as a canvas.
+     User draws black bars by clicking + dragging.
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="reviewModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Manual bar review">
+  <div class="modal-shell">
+
+    <!-- Top bar -->
+    <div class="modal-topbar">
+      <span class="modal-title" id="modalTitle">Review &amp; add manual bars</span>
+      <span class="modal-hint"><i class="fa-solid fa-hand-pointer"></i> Click &amp; drag to draw a black bar</span>
+      <button class="btn-modal btn-modal-ghost" id="modalCloseBtn" title="Close without saving"><i class="fa-solid fa-xmark"></i> Close</button>
+    </div>
+
+    <!-- Canvas area -->
+    <div class="modal-canvas-area">
+      <div id="modalCanvasContainer"></div>
+    </div>
+
+    <!-- Bottom toolbar -->
+    <div class="modal-toolbar">
+      <!-- Page navigation -->
+      <div class="modal-nav-group">
+        <button class="btn-modal btn-modal-ghost" id="modalPrevBtn" title="Previous page">
+          <i class="fa-solid fa-chevron-left"></i> Prev
+        </button>
+        <span class="modal-page-info" id="modalPageInfo">Page 1 of 1</span>
+        <button class="btn-modal btn-modal-ghost" id="modalNextBtn" title="Next page">
+          Next <i class="fa-solid fa-chevron-right"></i>
+        </button>
+      </div>
+
+      <div class="modal-sep"></div>
+
+      <!-- Bar thickness for manual draws -->
+      <div class="modal-thickness-row">
+        <i class="fa-solid fa-minus" style="font-size:.7rem"></i>
+        <label for="modalBarThickness" style="white-space:nowrap;">Bar height:</label>
+        <input type="range" id="modalBarThickness" min="4" max="60" value="16" step="1" />
+        <i class="fa-solid fa-plus" style="font-size:.7rem"></i>
+        <span class="modal-thickness-val" id="modalBarThicknessVal">16 px</span>
+      </div>
+
+      <div class="modal-sep"></div>
+
+      <!-- Undo last bar on this page -->
+      <button class="btn-modal btn-modal-danger" id="modalUndoBtn" title="Undo last bar on this page">
+        <i class="fa-solid fa-rotate-left"></i> Undo
+      </button>
+
+      <div style="flex:1"></div>
+
+      <!-- Cancel -->
+      <button class="btn-modal btn-modal-ghost" id="modalCancelBtn">
+        Cancel
+      </button>
+
+      <!-- Finalise + download -->
+      <button class="btn-modal btn-modal-success" id="modalDownloadBtn">
+        <i class="fa-solid fa-download"></i> Finalise &amp; download
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ── Inline scripts (no CDN needed) ── -->
 <script>
 (function(){
-  var slider = document.getElementById('barPadding');
-  var valLbl = document.getElementById('barPaddingVal');
-  var preview= document.getElementById('barPreview');
-  function update(){
-    var v = slider.value;
+  /* Bar padding preview */
+  var slider  = document.getElementById('barPadding');
+  var valLbl  = document.getElementById('barPaddingVal');
+  var preview = document.getElementById('barPreview');
+  function updateBarPreview(){
+    var v = parseInt(slider.value,10);
     valLbl.textContent = v + ' px';
-    preview.style.height = (10 + parseInt(v)*2) + 'px';
+    preview.style.height = (10 + v*2) + 'px';
   }
-  slider.addEventListener('input', update);
-  update();
+  slider.addEventListener('input', updateBarPreview);
+  updateBarPreview();
 
-  // Manual terms chips
-  var ta = document.getElementById('manualTerms');
+  /* Manual terms chips */
+  var ta      = document.getElementById('manualTerms');
   var chipRow = document.getElementById('termChips');
   function updateChips(){
     var vals = ta.value.split(/[\n,;]+/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
@@ -431,6 +601,13 @@ input[type=range]{flex:1;accent-color:var(--black);height:4px;cursor:pointer}
     });
   }
   ta.addEventListener('input', updateChips);
+
+  /* Modal bar-thickness live label */
+  var mSlider = document.getElementById('modalBarThickness');
+  var mLbl    = document.getElementById('modalBarThicknessVal');
+  mSlider.addEventListener('input', function(){
+    mLbl.textContent = this.value + ' px';
+  });
 })();
 </script>
 
