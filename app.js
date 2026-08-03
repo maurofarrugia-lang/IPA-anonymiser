@@ -1,446 +1,776 @@
-/**
- * EUAA Monitoring Anonymiser — App Controller
- * =============================================
- * Orchestrates file intake, processing pipeline, UI updates, and downloads.
- * Privacy: no XMLHttpRequest, no fetch to external endpoints with file data.
- */
+/* ────────────────────────────────────────────────────────────
+   EUAA Monitoring Anonymiser — Main Stylesheet
+   ──────────────────────────────────────────────────────────── */
 
-(() => {
-  'use strict';
+/* ── Reset & tokens ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  // ── DOM refs ────────────────────────────────────────────────────────────
-  const $ = id => document.getElementById(id);
-  const dropZone       = $('dropZone');
-  const fileInput      = $('fileInput');
-  const folderInput    = $('folderInput');
-  const fileQueue      = $('fileQueue');
-  const fileList       = $('fileList');
-  const fileCount      = $('fileCount');
-  const clearFilesBtn  = $('clearFilesBtn');
-  const processBtn     = $('processBtn');
-  const downloadAllBtn = $('downloadAllBtn');
-  const clearSessionBtn= $('clearSessionBtn');
-  const downloadMapBtn = $('downloadMapBtn');
-  const progressWrap   = $('progressWrap');
-  const progressLabel  = $('progressLabel');
-  const progressFill   = $('progressFill');
-  const statusBanner   = $('statusBanner');
-  const statusText     = $('statusText');
-  const resultsCard    = $('results-card');
-  const resultsContainer=$('resultsContainer');
-  const mapCard        = $('map-card');
-  const mapBody        = $('mapBody');
-  const statsRow       = $('statsRow');
-  const personPrefix   = $('personPrefix');
-  const ocrToggle      = $('ocrToggle');
+:root {
+  --col-bg:        #f0f4f8;
+  --col-surface:   #ffffff;
+  --col-border:    #d1dae6;
+  --col-text:      #1a2233;
+  --col-muted:     #6b7a96;
+  --col-primary:   #1d4ed8;
+  --col-primary-h: #1e40af;
+  --col-primary-l: #dbeafe;
+  --col-success:   #16a34a;
+  --col-success-l: #dcfce7;
+  --col-warn:      #d97706;
+  --col-warn-l:    #fef3c7;
+  --col-danger:    #dc2626;
+  --col-danger-l:  #fee2e2;
+  --col-accent:    #7c3aed;
+  --col-accent-l:  #ede9fe;
+  --radius-sm:     6px;
+  --radius-md:     10px;
+  --radius-lg:     16px;
+  --shadow-sm:     0 1px 3px rgba(0,0,0,.08);
+  --shadow-md:     0 4px 12px rgba(0,0,0,.10);
+  --shadow-lg:     0 8px 24px rgba(0,0,0,.12);
+  --font:          'Segoe UI', system-ui, -apple-system, sans-serif;
+}
 
-  const entityToggles  = [...document.querySelectorAll('.entity-toggle')];
-  const levelRadios    = [...document.querySelectorAll('input[name="level"]')];
-  const pdfModeRadios  = [...document.querySelectorAll('input[name="pdfMode"]')];
+html { font-size: 16px; scroll-behavior: smooth; }
 
-  // ── Session state ────────────────────────────────────────────────────────
-  // _euaaFiles is owned by the inline upload script in index.html (no CDN deps).
-  // We reference it here via window._euaaFiles so upload works even if app.js
-  // fails to parse, and so that files added before app.js loads are preserved.
-  const session = {
-    get files()      { return window._euaaFiles || []; },
-    set files(v)     { window._euaaFiles = v; },
-    results:    [],
-    objectUrls: [],
-  };
+body {
+  font-family: var(--font);
+  background: var(--col-bg);
+  color: var(--col-text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-  const SUPPORTED_EXTS = new Set(['docx','pdf','txt','xlsx']);
-  const EXT_ICONS = { pdf:'🔴', docx:'📘', xlsx:'📗', txt:'⬜' };
+/* ── Site header ── */
+.site-header {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%);
+  color: #fff;
+  padding: 0 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
 
-  function getLevel()   { return levelRadios.find(r => r.checked)?.value   || 'demo-safe'; }
-  function getPdfMode() { return pdfModeRadios.find(r => r.checked)?.value || 'blackout'; }
-  function getActive()  { return new Set(entityToggles.filter(t => t.checked).map(t => t.value)); }
-  function useOcr()     { return ocrToggle.checked; }
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  gap: 1rem;
+}
 
-  function blobUrl(blob) {
-    const url = URL.createObjectURL(blob);
-    session.objectUrls.push(url);
-    return url;
-  }
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
 
-  function revokeBlobUrls() {
-    session.objectUrls.forEach(u => URL.revokeObjectURL(u));
-    session.objectUrls = [];
-  }
+.brand-icon {
+  font-size: 2rem;
+  line-height: 1;
+  opacity: .9;
+}
 
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;');
-  }
+.brand-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -.01em;
+}
 
-  function fmtBytes(n) {
-    if (n < 1024) return `${n} B`;
-    if (n < 1048576) return `${(n/1024).toFixed(1)} KB`;
-    return `${(n/1048576).toFixed(1)} MB`;
-  }
+.brand-sub {
+  font-size: .75rem;
+  color: rgba(255,255,255,.7);
+  margin-top: 1px;
+}
 
-  // ── Status UI ────────────────────────────────────────────────────────────
-  function setStatus(msg, type = 'info') {
-    statusBanner.className = `status-banner ${type}`;
-    statusText.textContent = msg;
-  }
+.header-badges { display: flex; gap: .5rem; flex-wrap: wrap; }
 
-  function setProgress(pct, label) {
-    progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-    progressLabel.textContent = label || '';
-  }
+/* ── Badges ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .25rem .7rem;
+  border-radius: 20px;
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
 
-  // ── Preset buttons ────────────────────────────────────────────────────────
-  const PRESET_DIRECT      = ['PERSON','CASE_ID','PASSPORT_OR_ID','ADDRESS','EMAIL','PHONE'];
-  const PRESET_RECOMMENDED = ['PERSON','CASE_ID','PASSPORT_OR_ID','ADDRESS','EMAIL','PHONE','DATE_EXACT','COUNTRY','LOCATION','FACILITY','ROUTE','FAMILY_TERM'];
-  const PRESET_ALL         = PRESET_RECOMMENDED;
+.badge-green { background: rgba(22,163,74,.25); color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.badge-blue  { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.2); }
+.badge-dl    { background: rgba(124,58,237,.35); color: #e9d5ff; border: 1px solid rgba(167,139,250,.4); text-decoration: none; cursor: pointer; transition: background .15s; }
+.badge-dl:hover { background: rgba(124,58,237,.55); }
 
-  function applyPreset(values) {
-    const set = new Set(values);
-    entityToggles.forEach(t => { t.checked = set.has(t.value); });
-    // Update category item styling
-    updateCatItemStyles();
-  }
+/* ── Main wrap ── */
+.main-wrap {
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 0 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
 
-  function updateCatItemStyles() {
-    entityToggles.forEach(t => {
-      const label = t.closest('.cat-item');
-      // CSS :has() handles this in modern browsers already
-    });
-  }
+/* ── Cards ── */
+.card {
+  background: var(--col-surface);
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
 
-  $('presetDirect').addEventListener('click', () => applyPreset(PRESET_DIRECT));
-  $('presetRecommended').addEventListener('click', () => applyPreset(PRESET_RECOMMENDED));
-  $('presetAll').addEventListener('click', () => applyPreset(PRESET_ALL));
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--col-border);
+  background: #f8fafc;
+}
 
-  // Processing level — update radio card selection state
-  levelRadios.forEach(r => r.addEventListener('change', () => {
-    document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
-    r.closest('.radio-card')?.classList.add('selected');
-  }));
+.card-head h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  flex: 1;
+}
 
-  pdfModeRadios.forEach(r => r.addEventListener('change', () => {
-    document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
-    r.closest('.radio-card')?.classList.add('selected');
-  }));
+.card-head-right {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-left: auto;
+}
 
-  // ── File handling — delegates to window.addFilesToQueue (inline script in index.html)
-  // That script runs before any CDN libs, so upload always works.
-  function addFiles(rawFiles) {
-    if (typeof window.addFilesToQueue === 'function') {
-      window.addFilesToQueue(rawFiles);
-    }
-  }
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--col-primary);
+  color: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 
-  function renderFileQueue() {
-    // Rendering is handled by the inline upload script.
-    // This stub exists so processAll / clearSession can call it without errors.
-  }
+/* ── Upload area ── */
+.upload-area {
+  padding: 2.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .75rem;
+  border-bottom: 1px solid var(--col-border);
+  cursor: pointer;
+  transition: background .15s;
+}
 
-  // Clear files only (not session results)
-  clearFilesBtn.addEventListener('click', () => {
-    window._euaaFiles = [];
-    // Trigger a re-render via the inline upload script
-    if (typeof window.addFilesToQueue === 'function') window.addFilesToQueue([]);
-    processBtn.disabled = true;
-    setStatus('File queue cleared.', 'info');
-  });
+.upload-area:hover, .upload-area.dragover {
+  background: var(--col-primary-l);
+}
 
-  // ── Main processing pipeline ──────────────────────────────────────────────
-  processBtn.addEventListener('click', processAll);
+.upload-area.dragover {
+  border: 2px dashed var(--col-primary);
+  border-radius: var(--radius-md);
+}
 
-  async function processAll() {
-    if (!session.files.length) { setStatus('Add files before processing.', 'warn'); return; }
-    const active = getActive();
-    if (!active.size) { setStatus('Select at least one anonymisation category.', 'warn'); return; }
+.upload-icon {
+  font-size: 3rem;
+  color: var(--col-primary);
+  line-height: 1;
+}
 
-    // Reset session results
-    revokeBlobUrls();
-    session.results = [];
-    EuaaAnonymizer.resetSession();
-    EuaaAnonymizer.setPrefix(personPrefix.value.trim() || 'Applicant');
+.upload-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--col-text);
+}
 
-    renderResultsContainer();
-    renderMapTable();
-    statsRow.innerHTML = '';
-    resultsCard.style.display = '';
-    mapCard.style.display = '';
-    processBtn.disabled = true;
-    downloadAllBtn.disabled = true;
-    progressWrap.style.display = '';
-    setProgress(0, 'Starting…');
-    setStatus('Processing files…', 'info');
+.upload-hint {
+  font-size: .85rem;
+  color: var(--col-muted);
+}
 
-    const level   = getLevel();
-    const pdfMode = getPdfMode();
-    const ocr     = useOcr();
-    const total   = session.files.length;
+.upload-btn-row {
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: .5rem;
+}
 
-    for (let i = 0; i < total; i++) {
-      const entry = session.files[i];
-      const pctBase = (i / total) * 100;
+/* ── File queue ── */
+.file-queue {
+  padding: 1rem 1.5rem;
+}
 
-      const statusUpdater = msg => {
-        setProgress(pctBase + (1 / total) * 50, msg);
-        setStatus(msg, 'info');
-      };
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .75rem;
+}
 
-      setProgress(pctBase, `(${i+1}/${total}) Processing ${entry.relativePath}…`);
+.queue-count {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--col-muted);
+}
 
-      let result;
-      try {
-        result = await processOne(entry, level, pdfMode, active, ocr, statusUpdater);
-      } catch (err) {
-        console.error(err);
-        result = {
-          sourceName: entry.relativePath,
-          mode: 'error',
-          previewText: buildErrorMessage(err),
-          replacements: [],
-          downloads: [],
-        };
-      }
+.file-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
 
-      session.results.push(result);
-      setProgress(((i + 1) / total) * 100, `Completed ${i + 1}/${total}`);
-      renderResultCard(result);
-      renderMapTable();
-    }
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem .75rem;
+  border-radius: var(--radius-sm);
+  background: var(--col-bg);
+  border: 1px solid var(--col-border);
+  font-size: .85rem;
+}
 
-    renderStats();
-    progressWrap.style.display = 'none';
-    processBtn.disabled = false;
-    downloadAllBtn.disabled = session.results.every(r => !r.downloads.length);
-    setStatus(`✅ Finished — ${total} file(s) processed entirely in your browser. Review output before use.`, 'success');
-  }
+.file-item-icon { font-size: 1rem; flex-shrink: 0; }
+.file-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-item-size { color: var(--col-muted); font-size: .78rem; flex-shrink: 0; }
+.file-item-ext {
+  font-size: .7rem;
+  font-weight: 700;
+  padding: .1rem .4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.ext-pdf  { background: #fee2e2; color: #b91c1c; }
+.ext-docx { background: #dbeafe; color: #1d4ed8; }
+.ext-xlsx { background: #dcfce7; color: #166534; }
+.ext-txt  { background: #f3f4f6; color: #374151; }
 
-  function buildErrorMessage(err) {
-    const base = String(err?.message || err || 'Unknown error');
-    return [
-      base,
-      '',
-      'Troubleshooting tips:',
-      '• Confirm the file opens normally in its native application (Word, Acrobat, Excel).',
-      '• For PDFs: use File → Save As / Export → PDF (not print-to-PDF) for best results.',
-      '• For scanned PDFs: ensure OCR fallback is enabled.',
-      '• If the file was downloaded from a web portal, re-save the actual document and upload that copy.',
-      '• Encrypted or password-protected files are not supported.',
-    ].join('\n');
-  }
+/* ── Options ── */
+#options-card .card-head { border-bottom: none; }
 
-  async function processOne(entry, level, pdfMode, active, ocr, onStatus) {
-    switch (entry.ext) {
-      case 'pdf':
-        return EuaaPdfProcessor.process(entry.file, pdfMode, level, active, ocr, onStatus);
-      case 'docx':
-        return EuaaDocProcessor.processDocx(entry.file, level, active, onStatus);
-      case 'txt':
-        return EuaaDocProcessor.processTxt(entry.file, level, active, onStatus);
-      case 'xlsx':
-        return EuaaDocProcessor.processXlsx(entry.file, level, active, onStatus);
-      default:
-        throw new Error(`Unsupported file type: .${entry.ext}`);
-    }
-  }
+.option-group {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--col-border);
+}
 
-  // ── Render result cards ───────────────────────────────────────────────────
-  function renderResultsContainer() {
-    resultsContainer.innerHTML = '';
-  }
+.option-label {
+  display: block;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--col-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: .75rem;
+}
 
-  function renderResultCard(result) {
-    const card = document.createElement('article');
-    card.className = 'result-card';
+.option-label i { margin-right: .4rem; }
 
-    const modeLabels = {
-      'blackout':    ['⬛ Black-bar redaction', 'mode-blackout'],
-      'rebuild':     ['📝 Anonymised & rebuilt', 'mode-rebuild'],
-      'rebuild-ocr': ['🔍 Anonymised + OCR', 'mode-ocr'],
-      'docx':        ['📘 Word anonymised', 'mode-docx'],
-      'txt':         ['📃 Text anonymised', 'mode-txt'],
-      'xlsx':        ['📊 Spreadsheet anonymised', 'mode-xlsx'],
-      'error':       ['❌ Processing error', 'mode-error'],
-    };
+/* Radio cards */
+.radio-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: .75rem;
+}
 
-    const [modeLabel, modeCls] = modeLabels[result.mode] || ['Processed', 'mode-rebuild'];
-    const replCount = result.replacements?.length || 0;
+.radio-card {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .9rem 1rem;
+  border: 2px solid var(--col-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
 
-    // Downloads
-    const dlHtml = result.downloads.map(dl => {
-      const url = blobUrl(dl.blob);
-      return `<a class="download-link ${dl.dlClass}" href="${url}" download="${escHtml(dl.filename)}">${dl.label}</a>`;
-    }).join('');
+.radio-card input { display: none; }
+.radio-card:hover { border-color: var(--col-primary); }
+.radio-card.selected, .radio-card:has(input:checked) {
+  border-color: var(--col-primary);
+  background: var(--col-primary-l);
+}
 
-    const isError = result.mode === 'error';
+.radio-title {
+  font-size: .9rem;
+  font-weight: 700;
+}
 
-    card.innerHTML = `
-      <div class="result-card-head">
-        <div style="flex:1;min-width:0;">
-          <h3>${escHtml(result.sourceName)}</h3>
-          <span class="result-meta">${replCount} substitution(s)</span>
-        </div>
-        <span class="result-mode ${modeCls}">${modeLabel}</span>
-      </div>
-      ${dlHtml ? `<div class="result-downloads">${dlHtml}</div>` : ''}
-      <pre class="result-preview${isError ? ' error-preview' : ''}">${escHtml(
-        (result.previewText || '').slice(0, 8000) || '(no preview)'
-      )}</pre>
-    `;
+.radio-desc {
+  font-size: .8rem;
+  color: var(--col-muted);
+  line-height: 1.4;
+}
 
-    resultsContainer.appendChild(card);
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
+/* Toggle */
+.inline-group { display: flex; align-items: flex-start; }
 
-  // ── Replacement map ────────────────────────────────────────────────────────
-  function renderMapTable() {
-    const map = EuaaAnonymizer.getEntityMap();
-    mapBody.innerHTML = '';
-    if (!map.size) return;
+.toggle-label {
+  display: flex;
+  align-items: flex-start;
+  gap: .85rem;
+  cursor: pointer;
+}
 
-    const rows = [...map.values()].sort((a, b) =>
-      a.category.localeCompare(b.category) || a.original.localeCompare(b.original)
-    );
+.toggle-input { display: none; }
 
-    for (const row of rows) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><span class="cat-tag cat-${escHtml(row.category)}">${escHtml(row.category)}</span></td>
-        <td>${escHtml(row.original)}</td>
-        <td><strong>${escHtml(row.replacement)}</strong></td>
-      `;
-      mapBody.appendChild(tr);
-    }
-  }
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
 
-  function renderStats() {
-    const counts = EuaaAnonymizer.getSessionStats();
-    statsRow.innerHTML = '';
-    for (const [cat, n] of [...counts.entries()].sort()) {
-      const chip = document.createElement('span');
-      chip.className = 'stat-chip';
-      chip.textContent = `${cat}: ${n}`;
-      statsRow.appendChild(chip);
-    }
-  }
+.toggle-switch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #d1d5db;
+  border-radius: 12px;
+  transition: background .2s;
+}
 
-  // ── Download map ──────────────────────────────────────────────────────────
-  downloadMapBtn.addEventListener('click', () => {
-    const map = EuaaAnonymizer.getEntityMap();
-    if (!map.size) { setStatus('No replacements to export yet.', 'warn'); return; }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px;
+  left: 3px;
+  transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
 
-    const lines = ['Category\tOriginal\tReplacement'];
-    for (const row of map.values()) {
-      lines.push(`${row.category}\t${row.original}\t${row.replacement}`);
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/tab-separated-values;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = 'anonymisation-map.tsv'; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  });
+.toggle-input:checked + .toggle-switch::before { background: var(--col-primary); }
+.toggle-input:checked + .toggle-switch::after  { transform: translateX(20px); }
 
-  // ── Download all (ZIP) ────────────────────────────────────────────────────
-  downloadAllBtn.addEventListener('click', async () => {
-    if (!session.results.length) return;
-    downloadAllBtn.disabled = true;
-    downloadAllBtn.innerHTML = '<span class="spinner"></span> Zipping…';
+/* Text input */
+.text-input {
+  width: 100%;
+  max-width: 320px;
+  padding: .6rem .85rem;
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-sm);
+  font-size: .9rem;
+  font-family: var(--font);
+  background: var(--col-bg);
+  color: var(--col-text);
+  transition: border-color .15s, box-shadow .15s;
+}
 
-    try {
-      const zip = new JSZip();
+.text-input:focus {
+  outline: none;
+  border-color: var(--col-primary);
+  box-shadow: 0 0 0 3px rgba(29,78,216,.12);
+}
 
-      for (const result of session.results) {
-        for (const dl of result.downloads) {
-          const folder = result.sourceName.includes('/') ? result.sourceName.split('/').slice(0, -1).join('/') + '/' : '';
-          zip.file(folder + dl.filename, dl.blob);
-        }
-      }
+.field-hint {
+  font-size: .8rem;
+  color: var(--col-muted);
+  margin-top: .4rem;
+}
 
-      // Add the replacement map
-      const map = EuaaAnonymizer.getEntityMap();
-      if (map.size) {
-        const mapLines = ['Category\tOriginal\tReplacement'];
-        for (const row of map.values()) {
-          mapLines.push(`${row.category}\t${row.original}\t${row.replacement}`);
-        }
-        zip.file('anonymisation-map.tsv', mapLines.join('\n'));
-      }
+/* Categories */
+.categories-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-bottom: .75rem;
+}
 
-      // Add a README
-      zip.file('README.txt', [
-        'EUAA Monitoring Anonymiser — Output Bundle',
-        '==========================================',
-        `Generated: ${new Date().toISOString()}`,
-        `Files processed: ${session.results.length}`,
-        '',
-        'This ZIP contains anonymised versions of your documents.',
-        'All processing was done in your browser. No data was sent to any server.',
-        '',
-        'Always review output before using it in any official context.',
-      ].join('\n'));
+.categories-head .option-label { margin-bottom: 0; }
 
-      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url;
-      a.download = `anonymised-output-${new Date().toISOString().slice(0,10)}.zip`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-      setStatus('✅ ZIP download started.', 'success');
-    } catch (err) {
-      setStatus(`ZIP error: ${err.message}`, 'error');
-    } finally {
-      downloadAllBtn.disabled = false;
-      downloadAllBtn.innerHTML = '<i class="fa-solid fa-download"></i> Download all (ZIP)';
-    }
-  });
+.preset-btns { display: flex; gap: .4rem; }
 
-  // ── Clear session ─────────────────────────────────────────────────────────
-  clearSessionBtn.addEventListener('click', () => {
-    revokeBlobUrls();
-    window._euaaFiles = [];
-    session.results = [];
-    EuaaAnonymizer.resetSession();
-    if (typeof window.addFilesToQueue === 'function') window.addFilesToQueue([]);
-    renderResultsContainer();
-    renderMapTable();
-    statsRow.innerHTML = '';
-    resultsCard.style.display     = 'none';
-    mapCard.style.display         = 'none';
-    progressWrap.style.display    = 'none';
-    processBtn.disabled    = true;
-    downloadAllBtn.disabled = true;
-    setStatus('Session cleared. No data retained.', 'info');
-  });
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: .45rem;
+}
 
-  // ── Init ──────────────────────────────────────────────────────────────────
-  function init() {
-    applyPreset(PRESET_RECOMMENDED);
-    setStatus('Add files above to get started.', 'info');
-    // Mark default radio cards as selected
-    document.querySelectorAll('input[name="level"]:checked, input[name="pdfMode"]:checked').forEach(r => {
-      r.closest('.radio-card')?.classList.add('selected');
-    });
+.cat-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem .75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--col-border);
+  cursor: pointer;
+  font-size: .88rem;
+  background: var(--col-bg);
+  transition: background .12s, border-color .12s;
+  user-select: none;
+}
 
-    // Verify all required DOM elements exist — catch GitHub Pages deploy issues early
-    const required = ['fileInput','folderInput','dropZone','processBtn','downloadAllBtn',
-                      'clearSessionBtn','statusBanner','statusText','progressWrap'];
-    const missing = required.filter(id => !document.getElementById(id));
-    if (missing.length) {
-      console.error('EUAA Anonymiser: missing DOM elements:', missing);
-    }
-  }
+.cat-item:hover { background: var(--col-primary-l); border-color: var(--col-primary); }
+.cat-item:has(input:checked) { background: var(--col-primary-l); border-color: var(--col-primary); font-weight: 600; }
+.cat-item input { accent-color: var(--col-primary); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+.cat-item i { color: var(--col-primary); font-size: .85rem; flex-shrink: 0; }
 
-  // Always wait for full DOM — safe whether scripts are in <head> or <body>
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+/* ── Action card ── */
+#action-card .card-head { border-bottom: none; }
 
-  // Upload is handled entirely by the inline <script> in index.html — no fallback needed here.
+.action-row {
+  padding: 1rem 1.5rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  align-items: center;
+}
 
-})();
+/* Progress */
+.progress-wrap {
+  padding: 0 1.5rem 1rem;
+}
+
+.progress-label {
+  font-size: .82rem;
+  color: var(--col-muted);
+  margin-bottom: .45rem;
+}
+
+.progress-bar-track {
+  height: 8px;
+  background: var(--col-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--col-primary), #7c3aed);
+  border-radius: 4px;
+  transition: width .3s ease;
+}
+
+/* Status banner */
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .85rem 1.5rem;
+  background: #f8fafc;
+  border-top: 1px solid var(--col-border);
+  font-size: .88rem;
+  color: var(--col-muted);
+}
+
+.status-banner.info    { background: #f0f7ff; color: #1d4ed8; border-color: #bfdbfe; }
+.status-banner.success { background: var(--col-success-l); color: var(--col-success); border-color: #bbf7d0; }
+.status-banner.warn    { background: var(--col-warn-l); color: var(--col-warn); border-color: #fde68a; }
+.status-banner.error   { background: var(--col-danger-l); color: var(--col-danger); border-color: #fecaca; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .6rem 1.2rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: .9rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background .15s, opacity .15s, box-shadow .15s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--col-primary);
+  color: #fff;
+  border-color: var(--col-primary);
+}
+.btn-primary:hover:not(:disabled) { background: var(--col-primary-h); }
+
+.btn-outline {
+  background: #fff;
+  color: var(--col-primary);
+  border-color: var(--col-primary);
+}
+.btn-outline:hover:not(:disabled) { background: var(--col-primary-l); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--col-muted);
+  border-color: var(--col-border);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--col-bg); color: var(--col-text); }
+
+.btn-danger {
+  background: var(--col-danger);
+  color: #fff;
+  border-color: var(--col-danger);
+}
+.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+.btn-lg { padding: .8rem 1.6rem; font-size: 1rem; }
+.btn-sm { padding: .35rem .7rem; font-size: .8rem; }
+.btn-xs { padding: .2rem .55rem; font-size: .75rem; }
+
+/* ── Results ── */
+#results-card .card-head { border-bottom: 1px solid var(--col-border); }
+#resultsContainer { padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+.result-card {
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.result-card-head {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .85rem 1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--col-border);
+  flex-wrap: wrap;
+}
+
+.result-card-head h3 {
+  font-size: .9rem;
+  font-weight: 700;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-meta {
+  font-size: .78rem;
+  color: var(--col-muted);
+}
+
+.result-mode {
+  font-size: .75rem;
+  padding: .15rem .5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.mode-blackout { background: #1f2937; color: #f9fafb; }
+.mode-rebuild  { background: var(--col-primary-l); color: var(--col-primary); }
+.mode-ocr      { background: var(--col-accent-l); color: var(--col-accent); }
+.mode-error    { background: var(--col-danger-l); color: var(--col-danger); }
+.mode-docx     { background: #dbeafe; color: #1d4ed8; }
+.mode-xlsx     { background: #dcfce7; color: #166534; }
+.mode-txt      { background: #f3f4f6; color: #374151; }
+
+.result-downloads {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  padding: .6rem 1rem;
+  border-bottom: 1px solid var(--col-border);
+  background: #fafbfc;
+}
+
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem .65rem;
+  background: var(--col-primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: .78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background .12s;
+}
+
+.download-link:hover { background: var(--col-primary-h); }
+.download-link.dl-pdf  { background: #dc2626; }
+.download-link.dl-pdf:hover  { background: #b91c1c; }
+.download-link.dl-docx { background: #2563eb; }
+.download-link.dl-docx:hover { background: #1d4ed8; }
+.download-link.dl-xlsx { background: #16a34a; }
+.download-link.dl-xlsx:hover { background: #15803d; }
+.download-link.dl-txt  { background: #6b7280; }
+.download-link.dl-txt:hover  { background: #4b5563; }
+
+.result-preview {
+  padding: .85rem 1rem;
+  font-size: .82rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #374151;
+  background: #f9fafb;
+  max-height: 280px;
+  overflow-y: auto;
+  line-height: 1.55;
+  border-top: 1px solid var(--col-border);
+}
+
+.result-preview.error-preview {
+  color: var(--col-danger);
+  background: var(--col-danger-l);
+}
+
+/* ── Map table ── */
+#map-card { overflow: visible; }
+#map-card .card-head { border-bottom: 1px solid var(--col-border); }
+
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .75rem 1.5rem;
+  border-bottom: 1px solid var(--col-border);
+}
+
+.stat-chip {
+  font-size: .78rem;
+  font-weight: 600;
+  padding: .2rem .55rem;
+  border-radius: 4px;
+  background: var(--col-primary-l);
+  color: var(--col-primary);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  padding: 1rem 1.5rem;
+}
+
+.map-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+}
+
+.map-table th, .map-table td {
+  padding: .55rem .75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--col-border);
+  vertical-align: top;
+}
+
+.map-table th {
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--col-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  background: #f8fafc;
+  position: sticky;
+  top: 0;
+}
+
+.map-table td:first-child {
+  font-weight: 600;
+  font-size: .78rem;
+  white-space: nowrap;
+}
+
+.map-table tr:hover td { background: #f8fafc; }
+
+.cat-tag {
+  display: inline-block;
+  padding: .12rem .4rem;
+  border-radius: 4px;
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+/* category colours */
+.cat-PERSON       { background: #fce7f3; color: #be185d; }
+.cat-CASE_ID      { background: #e0e7ff; color: #3730a3; }
+.cat-PASSPORT_OR_ID { background: #e0e7ff; color: #3730a3; }
+.cat-ADDRESS      { background: #fef9c3; color: #a16207; }
+.cat-EMAIL        { background: #dcfce7; color: #15803d; }
+.cat-PHONE        { background: #dcfce7; color: #15803d; }
+.cat-DATE_EXACT   { background: #fef3c7; color: #b45309; }
+.cat-COUNTRY      { background: #dbeafe; color: #1d4ed8; }
+.cat-LOCATION     { background: #dbeafe; color: #1d4ed8; }
+.cat-FACILITY     { background: #f3e8ff; color: #6d28d9; }
+.cat-ROUTE        { background: #f3e8ff; color: #6d28d9; }
+.cat-FAMILY_TERM  { background: #fff1f2; color: #be123c; }
+
+/* ── Misc ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .25rem .65rem;
+  border-radius: 20px;
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.chip-green { background: var(--col-success-l); color: var(--col-success); border: 1px solid #bbf7d0; }
+
+.muted-text { color: var(--col-muted); }
+.small-text { font-size: .8rem; }
+
+/* ── Footer ── */
+.site-footer {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  font-size: .8rem;
+  color: var(--col-muted);
+  border-top: 1px solid var(--col-border);
+  background: var(--col-surface);
+  margin-top: 2rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 680px) {
+  .header-inner { flex-direction: column; align-items: flex-start; padding: .75rem 0; }
+  .radio-group { grid-template-columns: 1fr; }
+  .category-grid { grid-template-columns: 1fr 1fr; }
+  .action-row { flex-direction: column; align-items: stretch; }
+  .btn-lg { justify-content: center; }
+  .result-card-head { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 440px) {
+  .category-grid { grid-template-columns: 1fr; }
+  .preset-btns { flex-wrap: wrap; }
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--col-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--col-muted); }
+
+/* ── Loading spinner ── */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
