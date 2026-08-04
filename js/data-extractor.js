@@ -20,3 +20,4 @@ const EuaaDataExtractor = (function () {
   function generateSuggestions(flags){return flags.map(function(flag){var suggestion='';switch(flag.type){case 'CONFLICTING_DOB':suggestion='Review pages listed and confirm correct date of birth. Check if one date is a document issue date.';break;case 'INVALID_PASSPORT_NO':suggestion='Possible OCR confusion: 0/O, 1/I/L, 8/B. Manually verify against original document image.';break;case 'SPELLING_INCONSISTENCY':suggestion='Verify spelling against primary identity document. Record all known aliases.';break;default:suggestion='Manual review required.';}return Object.assign({},flag,{suggestion:suggestion});});}
   return{extractAll:extractAll,classifyDocument:classifyDocument,checkConsistency:checkConsistency,generateSuggestions:generateSuggestions,validatePassportNumber:validatePassportNumber,validateDate:validateDate,DOC_TYPES:DOC_TYPES,NATIONALITIES:NATIONALITIES};
 })();
+window.EuaaDataExtractor=EuaaDataExtractor;

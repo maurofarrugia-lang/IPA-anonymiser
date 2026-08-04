@@ -19,3 +19,4 @@ const EuaaImageEnhancer = (function () {
   function enhance(canvas){return new Promise(function(resolve){try{var up=upscale(canvas,1200);var gray=toGrayscale(up);var deskewed=deskew(gray);var clahe=adaptiveContrast(deskewed,32,3.0);var denoised=gaussianBlur(clahe,1);var enhancedCanvas=unsharpMask(denoised,1.8);var hcCanvas=highContrast(deskewed);var hcSharp=unsharpMask(hcCanvas,2.0);var sharpCanvas=unsharpMask(enhancedCanvas,2.5);resolve({original:canvas,enhanced:enhancedCanvas,highContrast:hcSharp,sharpened:sharpCanvas,deskewAngle:0});}catch(e){resolve({original:canvas,enhanced:canvas,highContrast:canvas,sharpened:canvas,deskewAngle:0,error:e.message});}});}
   return{enhance:enhance,upscale:upscale,binarize:binarize,toGrayscale:toGrayscale};
 })();
+window.EuaaImageEnhancer=EuaaImageEnhancer;

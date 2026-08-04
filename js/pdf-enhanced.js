@@ -99,3 +99,4 @@ const EuaaPdfEnhanced = (function () {
   }
   return{process:process,SCALE:SCALE};
 })();
+window.EuaaPdfEnhanced=EuaaPdfEnhanced;
